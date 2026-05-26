@@ -65,3 +65,21 @@ Run through this list before distributing a build internally or externally. Tick
 ---
 
 After every box is ticked, attach the `codesign --display --entitlements -` output and the `notarytool` submission UUID to the release record.
+
+## 配布パッケージング (S6-B)
+
+詳細は [`distribution.md`](distribution.md) を参照。
+
+- [ ] `DEVELOPMENT_TEAM` env を設定
+- [ ] `./scripts/build-release.sh` で Release ビルド成功 → `dist/localVoiceRec.app` 生成
+- [ ] `codesign -dvv dist/localVoiceRec.app` で `flags=...(runtime)` を含む（Hardened Runtime）
+- [ ] `APPLE_ID` / `APP_PASSWORD` / `TEAM_ID` 設定
+- [ ] `./scripts/notarize.sh` 通過（`xcrun stapler validate` accepted）
+- [ ] `./scripts/make-dmg.sh` で `dist/localVoiceRec-<version>.dmg` 生成
+- [ ] `spctl --assess --type execute -vv dist/localVoiceRec.app` で `accepted, source=Notarized Developer ID`
+- [ ] DMG の SHA256 を計算し配布ページに掲載
+  ```bash
+  shasum -a 256 dist/localVoiceRec-*.dmg
+  ```
+- [ ] 自前サイトのダウンロードページ更新（バージョン番号 + SHA256 + リンク）
+- [ ] 前バージョンを `archive/` 等に退避（ロールバック用）
