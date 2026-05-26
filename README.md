@@ -1,0 +1,39 @@
+# localVoiceRec
+
+社内会議を Mac 上で録音し、デバイス内で文字起こし・構造化要約まで完結させる macOS ネイティブアプリ。
+
+**音声・文字起こし・要約のすべてを端末内で処理し、データを一切外部に送信しない。**
+
+## 要件
+
+- macOS 26 (Tahoe) 以降
+- Apple Silicon（M1 以降）
+
+## 技術スタック
+
+| レイヤー | 採用技術 |
+|---|---|
+| 言語 | Swift |
+| UI | SwiftUI（MenuBarExtra） |
+| 収音 | AVAudioEngine + Core Audio process tap |
+| 文字起こし | SpeechAnalyzer（macOS 26 標準） |
+| 要約 | Foundation Models（オンデバイス） |
+| 永続化 | SwiftData |
+
+## ドキュメント
+
+- [仕様書](docs/spec.md)
+
+## 開発フェーズ
+
+| フェーズ | 内容 |
+|---|---|
+| Phase 0 | システム音声 2ch 取得の技術検証（PoC） |
+| Phase 1 | 録音 + ローカル保存 + 一覧 |
+| Phase 2 | SpeechAnalyzer による文字起こし |
+| Phase 3 | Foundation Models による構造化要約 |
+| Phase 4 | セキュリティ硬化・社内配布・署名/公証 |
+
+---
+
+*社内限定 / 機密*
