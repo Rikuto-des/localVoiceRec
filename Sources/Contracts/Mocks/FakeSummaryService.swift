@@ -15,8 +15,8 @@ public actor FakeSummaryService: SummaryService {
         from segments: [TranscriptSegment],
         recordingID: UUID
     ) async throws -> SummaryDocument {
-        if case .available = configuredAvailability {} else {
-            throw SummaryError.notAvailable(configuredAvailability)
+        if case .unavailable(let reason) = configuredAvailability {
+            throw SummaryError.notAvailable(reason: reason)
         }
         let combined = segments.map(\.text).joined(separator: " ")
         return SummaryDocument(

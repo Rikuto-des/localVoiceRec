@@ -36,8 +36,17 @@ public protocol AudioCaptureService: Sendable {
     /// 録音終了。ファイルをクローズし、完成した `Recording` を返す。
     func stop() async throws -> Recording
 
-    /// 録音状態の購読。UI のインジケータ更新に使う。
-    var state: AsyncStream<CaptureState> { get }
+    /// 現在の録音状態（同期的に取得）。
+    /// UI 初期描画で `stateUpdates` 購読前にスナップショットを取る用途。
+    var currentState: CaptureState { get async }
+
+    /// 状態変更の通知。
+    ///
+    /// ## セマンティクス（実装契約）
+    /// - **cold stream**: 購読開始時点で `currentState` を 1 回必ず yield してから変更を流す
+    /// - **distinct-until-changed**: 同一値を連続して yield しない
+    /// - **buffering**: `.bufferingNewest(1)` を使い、遅い consumer の場合は最新だけ届く
+    var stateUpdates: AsyncStream<CaptureState> { get }
 }
 
 public enum CaptureState: Sendable, Hashable {
@@ -46,7 +55,7 @@ public enum CaptureState: Sendable, Hashable {
     case recording(startedAt: Date)
     case paused(startedAt: Date, pausedAt: Date)
     case finalizing
-    case failed(message: String)
+    case failed(error: AudioCaptureError)
 }
 
 public struct CaptureSession: Sendable, Hashable {

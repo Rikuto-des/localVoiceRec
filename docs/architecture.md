@@ -31,6 +31,7 @@ Sources/Contracts/
 ├── TranscriptionService.swift
 ├── SummaryService.swift
 ├── RecordingRepository.swift
+├── AppPaths.swift                ← ファイル配置の単一情報源（C3）
 └── Mocks/
     ├── InMemoryRecordingRepository.swift
     ├── FakeAudioCaptureService.swift
@@ -64,7 +65,7 @@ Sources/Contracts/
 - **SwiftData `@Model` 型を直接 import してはならない**（DataStore モジュールに依存しない）
 - 依存は `Contracts` のみ
 - Previews は `InMemoryRecordingRepository` + `FakeXxxService` を使う
-- 進捗イベントの switch には `default` を必ず書く（Contract enum 追加耐性）
+- Contract enum 変更は凍結。新 case が必要なら Contract 側を更新し、全 consumer の exhaustive switch を直す（`default` で握り潰さない）
 
 ### 4. TranscriptionKit (S2-D)
 - `Sources/TranscriptionKit/` 配下を編集可
@@ -76,6 +77,31 @@ Sources/Contracts/
 - `Sources/SummaryKit/` 配下を編集可
 - `SystemLanguageModel.default.availability` を尊重し、UI に状態を伝える
 - `prewarm()` は実推論の 1 秒以上前に呼ぶ
+
+## ファイル配置（`AppPaths`）
+
+`Sources/Contracts/AppPaths.swift` がすべてのパス決定の単一情報源。AudioCapture / DataStore / UI はここを経由する。
+
+| 用途 | パス |
+|---|---|
+| 録音 WAV ルート | `<appSupportRoot>/Recordings/` |
+| 録音ごとのディレクトリ | `<recordingsRoot>/<UUID>/` |
+| SwiftData DB | `<appSupportRoot>/Store.sqlite` |
+
+- 録音ファイル: `<recordingsRoot>/<UUID>/mic.wav`, `<recordingsRoot>/<UUID>/system.wav`
+- SwiftData の `RecordingEntity` には **相対パス**を保存する（絶対パスはサンドボックス移動で死ぬ）。ロード時に `AppPaths.resolveRecordingURL(_:)` で URL を再構築する。
+
+## prewarm 規約
+
+| Service | prewarm シグネチャ | 用途 |
+|---|---|---|
+| AudioCaptureService | `prewarm() async` | aggregate device / mic engine のウォームアップ |
+| TranscriptionService | `prewarm(locale:) async throws` | SpeechAnalyzer + asset 確認（DL が必要なら throws） |
+| SummaryService | `prewarm() async` | LanguageModelSession + プロンプトプレフィックス |
+| RecordingRepository | `prewarm() async` | ModelContainer 構築 |
+
+- 呼び出しタイミング: `LocalVoiceRecApp.init` で `Task.detached { ... }` から fire-and-forget
+- 失敗時挙動: throws しない prewarm は失敗をログに残し、本番呼び出しで再試行
 
 ## エラー伝播ルール
 

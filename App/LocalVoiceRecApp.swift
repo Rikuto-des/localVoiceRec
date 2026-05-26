@@ -19,10 +19,19 @@ struct LocalVoiceRecApp: App {
         // ─── S0: 全部 Mock ───
         // S2 以降: AudioCaptureModule / DataStoreModule / TranscriptionKitModule / SummaryKitModule
         //           の実装に差し替える
-        self.capture = FakeAudioCaptureService()
-        self.repository = InMemoryRecordingRepository()
-        self.transcription = FakeTranscriptionService()
-        self.summary = FakeSummaryService()
+        let capture = FakeAudioCaptureService()
+        let repository = InMemoryRecordingRepository()
+        let transcription = FakeTranscriptionService()
+        let summary = FakeSummaryService()
+        self.capture = capture
+        self.repository = repository
+        self.transcription = transcription
+        self.summary = summary
+
+        // prewarm を fire-and-forget で起動
+        Task.detached { await capture.prewarm() }
+        Task.detached { await repository.prewarm() }
+        Task.detached { await summary.prewarm() }
     }
 
     var body: some Scene {

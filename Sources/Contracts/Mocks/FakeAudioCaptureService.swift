@@ -4,18 +4,30 @@ import Foundation
 /// UI 開発時にメニューバーから「開始」「停止」を操作できるだけのスタブ。
 public actor FakeAudioCaptureService: AudioCaptureService {
     private let continuation: AsyncStream<CaptureState>.Continuation
-    private nonisolated let _state: AsyncStream<CaptureState>
+    private nonisolated let stream: AsyncStream<CaptureState>
     private var startedAt: Date?
     private var session: CaptureSession?
+    private var _currentState: CaptureState = .idle
 
     public init() {
         var captured: AsyncStream<CaptureState>.Continuation!
-        self._state = AsyncStream<CaptureState> { captured = $0 }
+        self.stream = AsyncStream<CaptureState>(
+            bufferingPolicy: .bufferingNewest(1)
+        ) { captured = $0 }
         self.continuation = captured
+        // bufferingNewest(1) で初期値を 1 件積んでおく → 初回購読者が現在状態を取得できる
         captured.yield(.idle)
     }
 
-    public nonisolated var state: AsyncStream<CaptureState> { _state }
+    public var currentState: CaptureState { _currentState }
+
+    public nonisolated var stateUpdates: AsyncStream<CaptureState> { stream }
+
+    private func transition(to next: CaptureState) {
+        guard next != _currentState else { return }
+        _currentState = next
+        continuation.yield(next)
+    }
 
     public func prewarm() async {}
 
@@ -37,25 +49,25 @@ public actor FakeAudioCaptureService: AudioCaptureService {
         let s = CaptureSession(id: id, startedAt: now, micAudioURL: mic, systemAudioURL: sys, title: resolvedTitle)
         startedAt = now
         session = s
-        continuation.yield(.recording(startedAt: now))
+        transition(to: .recording(startedAt: now))
         return s
     }
 
     public func pause() async throws {
         guard let started = startedAt else { throw AudioCaptureError.notRecording }
-        continuation.yield(.paused(startedAt: started, pausedAt: Date()))
+        transition(to: .paused(startedAt: started, pausedAt: Date()))
     }
 
     public func resume() async throws {
         guard let started = startedAt else { throw AudioCaptureError.notRecording }
-        continuation.yield(.recording(startedAt: started))
+        transition(to: .recording(startedAt: started))
     }
 
     public func stop() async throws -> Recording {
         guard let s = session, let started = startedAt else {
             throw AudioCaptureError.notRecording
         }
-        continuation.yield(.finalizing)
+        transition(to: .finalizing)
         let endedAt = Date()
         let recording = Recording(
             id: s.id,
@@ -67,7 +79,7 @@ public actor FakeAudioCaptureService: AudioCaptureService {
         )
         session = nil
         startedAt = nil
-        continuation.yield(.idle)
+        transition(to: .idle)
         return recording
     }
 

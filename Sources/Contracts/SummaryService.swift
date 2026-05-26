@@ -33,14 +33,18 @@ public protocol SummaryService: Sendable {
 
 public enum SummaryAvailability: Sendable, Hashable {
     case available
-    case deviceNotEligible
-    case appleIntelligenceNotEnabled
-    case modelNotReady
-    case unsupportedOS
+    case unavailable(reason: UnavailableReason)
+
+    public enum UnavailableReason: Sendable, Hashable {
+        case deviceNotEligible
+        case appleIntelligenceNotEnabled
+        case modelNotReady
+        case unsupportedOS
+    }
 }
 
 public enum SummaryError: Error, Sendable, Hashable {
-    case notAvailable(SummaryAvailability)
+    case notAvailable(reason: SummaryAvailability.UnavailableReason)
     case generationFailed(message: String)
     /// 入力が 4,096 tokens を超え、かつ chunk 化でも処理しきれなかった
     case contextWindowExceeded

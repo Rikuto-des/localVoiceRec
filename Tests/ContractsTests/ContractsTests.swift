@@ -70,9 +70,35 @@ struct FakeSummaryTests {
     }
 
     @Test func unavailableThrows() async {
-        let svc = FakeSummaryService(availability: .deviceNotEligible)
+        let svc = FakeSummaryService(availability: .unavailable(reason: .deviceNotEligible))
         await #expect(throws: SummaryError.self) {
             _ = try await svc.generate(from: [], recordingID: UUID())
+        }
+    }
+}
+
+@Suite("AppPaths")
+struct AppPathsTests {
+    @Test func recordingDirectoryExistsAfterCreation() throws {
+        let id = UUID()
+        let dir = try AppPaths.recordingDirectory(for: id)
+        var isDir: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir)
+        #expect(exists)
+        #expect(isDir.boolValue)
+        // クリーンアップ
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    @Test func relativePathRoundtrip() throws {
+        let root = try AppPaths.recordingsRoot()
+        let id = UUID()
+        let url = root.appendingPathComponent("\(id.uuidString)/mic.wav")
+        let relative = AppPaths.relativePath(of: url, base: root)
+        #expect(relative == "\(id.uuidString)/mic.wav")
+        if let relative {
+            let resolved = try AppPaths.resolveRecordingURL(relative)
+            #expect(resolved.standardizedFileURL.path == url.standardizedFileURL.path)
         }
     }
 }

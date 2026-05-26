@@ -89,8 +89,8 @@ struct MenuBarContentView: View {
             Text("一時停止中（開始 \(startedAt.formatted(date: .omitted, time: .standard)))").font(.caption)
         case .finalizing:
             Text("ファイルを保存しています...").font(.caption)
-        case .failed(let msg):
-            Text(msg).font(.caption).foregroundStyle(.red)
+        case .failed(let error):
+            Text(String(describing: error)).font(.caption).foregroundStyle(.red)
         }
     }
 
@@ -118,8 +118,8 @@ struct MenuBarContentView: View {
     }
 
     private func subscribeState() async {
-        for await s in capture.state {
-            await MainActor.run { currentState = s }
+        for await s in capture.stateUpdates {
+            currentState = s
         }
     }
 }

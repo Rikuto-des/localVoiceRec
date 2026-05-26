@@ -8,6 +8,11 @@ import Foundation
 /// - これにより SwiftData スキーマ変更が UI に伝播しない（モジュール疎結合）
 /// - 削除時の物理消去（ゴミ箱経由ではなく即時）は `deleteFilesImmediately: true` で指定
 public protocol RecordingRepository: Sendable {
+    /// `ModelContainer` の構築・スキーママイグレーションを起動時に走らせる。
+    /// 失敗時はベストエフォート（throw しない実装でも可）でログのみ残し、
+    /// 後続の本番呼び出しでエラーを返す方針。
+    func prewarm() async
+
     // ─── Recording ───
     func create(_ recording: Recording) async throws
     func list(limit: Int?, offset: Int?) async throws -> [Recording]

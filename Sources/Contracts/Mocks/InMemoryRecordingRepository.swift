@@ -11,6 +11,8 @@ public actor InMemoryRecordingRepository: RecordingRepository {
         for r in seed { recordings[r.id] = r }
     }
 
+    public func prewarm() async {}
+
     // ─── Recording ───
     public func create(_ recording: Recording) async throws {
         recordings[recording.id] = recording
