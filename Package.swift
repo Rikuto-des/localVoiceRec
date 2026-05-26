@@ -88,6 +88,11 @@ let package = Package(
             path: "Tests/TranscriptionKitTests"
         ),
         .testTarget(
+            name: "SummaryKitTests",
+            dependencies: ["SummaryKit", "Contracts"],
+            path: "Tests/SummaryKitTests"
+        ),
+        .testTarget(
             name: "AppUITests",
             dependencies: ["AppUI", "Contracts"],
             path: "Tests/AppUITests"
