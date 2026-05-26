@@ -63,7 +63,8 @@ let package = Package(
         .executableTarget(
             name: "AudioTapPoC",
             dependencies: ["AudioTapKit"],
-            path: "Tools/AudioTapPoC"
+            path: "Tools/AudioTapPoC",
+            exclude: ["output"]
         ),
 
         // ─── Tests (placeholder; populated as modules mature) ───
@@ -96,6 +97,11 @@ let package = Package(
             name: "AppUITests",
             dependencies: ["AppUI", "Contracts"],
             path: "Tests/AppUITests"
+        ),
+        .testTarget(
+            name: "IntegrationTests",
+            dependencies: ["TranscriptionKit", "Contracts"],
+            path: "Tests/IntegrationTests"
         ),
     ]
 )
