@@ -72,5 +72,10 @@ let package = Package(
             dependencies: ["Contracts"],
             path: "Tests/ContractsTests"
         ),
+        .testTarget(
+            name: "TranscriptionKitTests",
+            dependencies: ["TranscriptionKit", "Contracts"],
+            path: "Tests/TranscriptionKitTests"
+        ),
     ]
 )
