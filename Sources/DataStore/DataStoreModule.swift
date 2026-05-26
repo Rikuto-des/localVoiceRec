@@ -1,8 +1,11 @@
 import Foundation
 import Contracts
 
-/// DataStore モジュールのエントリ。SwiftData @Model と `RecordingRepository` 実装を持つ。
-/// **S2-B で Data Specialist が中身を書きます。** S0 では型シェルだけ。
+/// DataStore モジュールのエントリ。
+/// 実装本体は `RecordingRepositoryImpl`（SwiftData ベース）。
 public enum DataStoreModule {
-    public static let placeholder: String = "DataStore module — to be implemented in S2-B"
+    /// デフォルト構成の Repository を返す（`AppPaths.storeURL()` 配下に on-disk store を作る）。
+    public static func makeRepository() throws -> any RecordingRepository {
+        try RecordingRepositoryImpl()
+    }
 }
