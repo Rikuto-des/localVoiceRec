@@ -82,5 +82,10 @@ let package = Package(
             dependencies: ["AudioCapture", "AudioTapKit", "Contracts"],
             path: "Tests/AudioCaptureTests"
         ),
+        .testTarget(
+            name: "TranscriptionKitTests",
+            dependencies: ["TranscriptionKit", "Contracts"],
+            path: "Tests/TranscriptionKitTests"
+        ),
     ]
 )
