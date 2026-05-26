@@ -46,3 +46,8 @@ Tools/AudioTapPoC/output/
 # Plan / scratch
 .plans/
 
+# Distribution artifacts (S6-B)
+dist/
+*.dmg
+*.zip
+*.pkg

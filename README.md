@@ -23,6 +23,19 @@
 ## ドキュメント
 
 - [仕様書](docs/spec.md)
+- [配布手順](docs/distribution.md)
+
+## 配布版のインストール
+
+1. 配布サイトから `localVoiceRec-<version>.dmg` をダウンロード
+2. 公開されている SHA-256 と一致するか確認:
+   ```bash
+   shasum -a 256 ~/Downloads/localVoiceRec-<version>.dmg
+   ```
+3. DMG を開き、`localVoiceRec.app` を `Applications` フォルダにドラッグ
+4. 初回起動で Gatekeeper 警告が出た場合は [`docs/distribution.md`](docs/distribution.md) の「初回起動時の Gatekeeper 対応」を参照
+
+リリース担当者向けのビルド・公証・パッケージング手順は [`docs/distribution.md`](docs/distribution.md) を参照。
 
 ## 開発フェーズ
 
