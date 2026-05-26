@@ -1,125 +1,177 @@
 import SwiftUI
 import Contracts
 
-/// メニューバーをクリックしたときに開く小ウィンドウの最小実装。
-/// S2-C で本格的なビューに差し替える。
+/// メニューバーをクリックしたときに表示される小ウィンドウ。
+///
+/// 録音操作（開始 / 停止 / 一時停止 / 再開）と、録音一覧ウィンドウへの導線を提供する。
 struct MenuBarContentView: View {
-    let capture: any AudioCaptureService
-    let repository: any RecordingRepository
-    let transcription: any TranscriptionService
-    let summary: any SummaryService
-
-    @State private var currentState: CaptureState = .idle
-    @State private var lastError: String?
+    @Bindable var viewModel: AppViewModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("localVoiceRec")
-                    .font(.headline)
-                Spacer()
-                statusBadge
-            }
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            header
             Divider()
-
             statusDescription
-
-            HStack {
-                Button(action: handleStart) {
-                    Label("録音開始", systemImage: "record.circle")
-                }
-                .disabled(isRecording)
-
-                Button(action: handleStop) {
-                    Label("停止", systemImage: "stop.circle")
-                }
-                .disabled(!isRecording)
-            }
-
-            if let lastError {
+            controlButtons
+            if let lastError = viewModel.lastError {
                 Text(lastError)
                     .foregroundStyle(.red)
                     .font(.caption)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
             Divider()
-            Button("終了") { NSApplication.shared.terminate(nil) }
-                .keyboardShortcut("q")
+            footer
         }
-        .padding(16)
-        .frame(width: 320)
-        .task { await subscribeState() }
+        .padding(Theme.Spacing.lg)
+        .frame(width: Theme.Layout.menuBarWidth)
+        .task {
+            await viewModel.subscribeToCaptureState()
+        }
+        .task {
+            await viewModel.refreshList()
+        }
     }
 
-    private var isRecording: Bool {
-        switch currentState {
-        case .recording, .paused, .preparing, .finalizing: return true
-        case .idle, .failed: return false
+    // MARK: - Sections
+
+    private var header: some View {
+        HStack {
+            Text("localVoiceRec")
+                .font(.headline)
+            Spacer()
+            statusBadge
         }
     }
 
     @ViewBuilder
     private var statusBadge: some View {
-        switch currentState {
+        switch viewModel.captureState {
         case .idle:
-            Text("待機中").foregroundStyle(.secondary)
+            badge(text: "待機中", color: .secondary)
         case .preparing:
-            Text("準備中").foregroundStyle(.secondary)
+            badge(text: "準備中", color: .secondary)
         case .recording:
-            Label("録音中", systemImage: "circle.fill").foregroundStyle(.red)
+            HStack(spacing: Theme.Spacing.xs) {
+                Circle()
+                    .fill(Theme.Palette.recordingRed)
+                    .frame(width: 8, height: 8)
+                Text("録音中")
+                    .font(.caption.bold())
+                    .foregroundStyle(Theme.Palette.recordingRed)
+            }
         case .paused:
-            Text("一時停止").foregroundStyle(.orange)
+            badge(text: "一時停止", color: .orange)
         case .finalizing:
-            Text("保存中").foregroundStyle(.secondary)
+            badge(text: "保存中", color: .secondary)
         case .failed:
-            Text("エラー").foregroundStyle(.red)
+            badge(text: "エラー", color: .red)
         }
+    }
+
+    private func badge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption.bold())
+            .foregroundStyle(color)
     }
 
     @ViewBuilder
     private var statusDescription: some View {
-        switch currentState {
+        switch viewModel.captureState {
         case .idle:
-            Text("メニューバーから録音を開始できます").font(.caption).foregroundStyle(.secondary)
+            Text("メニューバーから録音を開始できます")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .preparing:
-            Text("ハードウェアを準備しています...").font(.caption)
+            Text("ハードウェアを準備しています…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .recording(let startedAt):
-            Text("開始 \(startedAt.formatted(date: .omitted, time: .standard))").font(.caption)
+            Text("開始: \(startedAt.formatted(date: .omitted, time: .standard))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .paused(let startedAt, _):
-            Text("一時停止中（開始 \(startedAt.formatted(date: .omitted, time: .standard)))").font(.caption)
+            Text("一時停止中（開始: \(startedAt.formatted(date: .omitted, time: .standard))）")
+                .font(.caption)
+                .foregroundStyle(.orange)
         case .finalizing:
-            Text("ファイルを保存しています...").font(.caption)
+            Text("ファイルを保存しています…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .failed(let error):
-            Text(String(describing: error)).font(.caption).foregroundStyle(.red)
+            Text("失敗: \(String(describing: error))")
+                .font(.caption)
+                .foregroundStyle(.red)
         }
     }
 
-    private func handleStart() {
-        Task {
-            do {
-                let dir = FileManager.default.temporaryDirectory
-                _ = try await capture.start(in: dir, title: nil)
-                lastError = nil
-            } catch {
-                lastError = "開始失敗: \(error)"
+    @ViewBuilder
+    private var controlButtons: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            if viewModel.isActivelyRecording {
+                Button {
+                    Task { await viewModel.pauseRecording() }
+                } label: {
+                    Label("一時停止", systemImage: "pause.circle")
+                }
+                Button(role: .destructive) {
+                    Task { await viewModel.stopRecording() }
+                } label: {
+                    Label("停止", systemImage: "stop.circle.fill")
+                }
+            } else if viewModel.isPaused {
+                Button {
+                    Task { await viewModel.resumeRecording() }
+                } label: {
+                    Label("再開", systemImage: "play.circle")
+                }
+                Button(role: .destructive) {
+                    Task { await viewModel.stopRecording() }
+                } label: {
+                    Label("停止", systemImage: "stop.circle.fill")
+                }
+            } else {
+                Button {
+                    Task { await viewModel.startRecording() }
+                } label: {
+                    Label("録音開始", systemImage: "record.circle")
+                }
+                .disabled(viewModel.isBusy || viewModel.isCapturing)
             }
         }
+        .controlSize(.large)
     }
 
-    private func handleStop() {
-        Task {
-            do {
-                _ = try await capture.stop()
-                lastError = nil
-            } catch {
-                lastError = "停止失敗: \(error)"
+    private var footer: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Button {
+                openWindow(id: RecordingListWindowID)
+            } label: {
+                Label("録音一覧を開く", systemImage: "list.bullet.rectangle")
+                    .frame(maxWidth: .infinity)
             }
-        }
-    }
+            .controlSize(.regular)
 
-    private func subscribeState() async {
-        for await s in capture.stateUpdates {
-            currentState = s
+            Button(role: .destructive) {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                Text("終了")
+                    .frame(maxWidth: .infinity)
+            }
+            .keyboardShortcut("q")
+            .controlSize(.regular)
         }
     }
+}
+
+#Preview("Idle") {
+    MenuBarContentView(
+        viewModel: AppViewModel(
+            capture: FakeAudioCaptureService(),
+            repository: InMemoryRecordingRepository(seed: [SampleData.recording]),
+            transcription: FakeTranscriptionService(),
+            summary: FakeSummaryService()
+        )
+    )
 }

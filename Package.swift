@@ -72,5 +72,10 @@ let package = Package(
             dependencies: ["Contracts"],
             path: "Tests/ContractsTests"
         ),
+        .testTarget(
+            name: "AppUITests",
+            dependencies: ["AppUI", "Contracts"],
+            path: "Tests/AppUITests"
+        ),
     ]
 )
