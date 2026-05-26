@@ -1,8 +1,10 @@
 import Foundation
 import Contracts
 
-/// SummaryKit モジュールのエントリ。Foundation Models による `SummaryService` 実装を持つ。
-/// **S4 で Summary Specialist が中身を書きます。** S0 では型シェルだけ。
+/// SummaryKit モジュールのエントリ。Foundation Models による `SummaryService` 実装を提供する factory。
 public enum SummaryKitModule {
-    public static let placeholder: String = "SummaryKit module — to be implemented in S4"
+    /// アプリ層で使う既定の `SummaryService` 実装を返す。
+    public static func makeService() -> any SummaryService {
+        FoundationModelsSummaryService()
+    }
 }
