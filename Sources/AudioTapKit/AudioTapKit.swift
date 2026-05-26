@@ -1,10 +1,15 @@
 import Foundation
 
-/// Core Audio process tap + AVAudioEngine の薄いラッパ。
-/// Phase 0 PoC (Tools/AudioTapPoC) と本番 AudioCapture モジュール両方から使う。
+/// AudioTapKit — Core Audio process tap + AVAudioEngine の薄いラッパ。
 ///
-/// **このファイルは S1 (Phase 0 PoC) で Audio Specialist が中身を書きます。**
-/// S0 では型シェルだけ用意。
+/// Phase 0 PoC (`AudioTapPoC`) と本番 `AudioCapture` モジュール両方から利用する。
+///
+/// 公開型:
+/// - ``SystemAudioTap``: Core Audio process tap + aggregate device によるシステム音声収録
+/// - ``MicCapture``: `AVAudioEngine.inputNode` によるマイク収録
+/// - ``WAVFileWriter``: `AVAudioFile` 薄ラップの WAV ライタ
+/// - ``AudioTapError``: 共通エラー
 public enum AudioTapKit {
-    public static let placeholder: String = "AudioTapKit module — to be implemented in S1"
+    /// 動作確認用のバージョン文字列 (S1 PoC 実装)。
+    public static let version: String = "0.1.0-poc"
 }
