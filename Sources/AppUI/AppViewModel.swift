@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Contracts
+import ExportKit
 
 /// アプリ全体の UI 状態を保持する ViewModel。
 ///
@@ -183,6 +184,40 @@ public final class AppViewModel {
         } catch {
             lastError = "要約の再生成に失敗しました: \(String(describing: error))"
         }
+    }
+
+    // MARK: - Intents: Export
+
+    /// Repository から最新の segments / summary を読み出し、`MeetingMinutes` を構築する。
+    ///
+    /// View 層は `.fileExporter` のドキュメント生成時にこのメソッドを呼ぶ。
+    /// 失敗時は throws する（呼び出し側で `lastError` への反映を行う）。
+    public func makeMinutes(for recording: Recording) async throws -> MeetingMinutes {
+        let loadedSegments = try await repository.loadSegments(for: recording.id)
+        let loadedSummary = try await repository.loadSummary(for: recording.id)
+        let sorted = loadedSegments.sorted { $0.startSec < $1.startSec }
+        return MeetingMinutes(
+            recording: recording,
+            segments: sorted,
+            summary: loadedSummary
+        )
+    }
+
+    /// 指定フォーマットでエクスポート用テキストを生成する。
+    public func exportText(for recording: Recording, format: ExportFormat) async throws -> String {
+        let minutes = try await makeMinutes(for: recording)
+        switch format {
+        case .markdown:
+            return MarkdownExporter.render(minutes)
+        case .plainText:
+            return PlainTextExporter.render(minutes)
+        }
+    }
+
+    /// エクスポート完了 / 失敗時の UI 通知用フック。
+    /// View 側で `lastError` を更新したい場合に使う簡易セッタ。
+    public func reportExportFailure(_ message: String) {
+        lastError = message
     }
 
     // MARK: - Intents: Delete

@@ -1,5 +1,7 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import Contracts
+import ExportKit
 
 /// 個別録音の詳細ビュー。
 ///
@@ -9,6 +11,13 @@ struct RecordingDetailView: View {
     @Bindable var viewModel: AppViewModel
     @State private var regenerateHint: String = ""
     @State private var showHintField: Bool = false
+
+    // ─── Export 関連 ───
+    @State private var showFormatChooser: Bool = false
+    @State private var exportDocument: MinutesExportDocument?
+    @State private var exportFormat: ExportFormat = .markdown
+    @State private var exportSuggestedName: String = "minutes"
+    @State private var isPreparingExport: Bool = false
 
     var body: some View {
         ScrollView {
@@ -147,7 +156,78 @@ struct RecordingDetailView: View {
                 }
                 .buttonStyle(.borderless)
             }
+
+            // ─── Export ───
+            Button {
+                showFormatChooser = true
+            } label: {
+                Label("エクスポート", systemImage: "square.and.arrow.up")
+            }
+            .disabled(viewModel.selectedRecording == nil || isPreparingExport)
+            .confirmationDialog(
+                "エクスポート形式を選択",
+                isPresented: $showFormatChooser,
+                titleVisibility: .visible
+            ) {
+                ForEach(ExportFormat.allCases) { format in
+                    Button(format.displayName) {
+                        Task { await prepareExport(format: format) }
+                    }
+                }
+                Button("キャンセル", role: .cancel) { }
+            }
+            .fileExporter(
+                isPresented: Binding(
+                    get: { exportDocument != nil },
+                    set: { newValue in
+                        if !newValue { exportDocument = nil }
+                    }
+                ),
+                document: exportDocument,
+                contentType: utType(for: exportFormat),
+                defaultFilename: exportSuggestedName
+            ) { result in
+                switch result {
+                case .success:
+                    exportDocument = nil
+                case .failure(let error):
+                    viewModel.reportExportFailure("エクスポートに失敗しました: \(error.localizedDescription)")
+                    exportDocument = nil
+                }
+            }
         }
+    }
+
+    private func utType(for format: ExportFormat) -> UTType {
+        UTType(format.utTypeIdentifier) ?? (format == .markdown ? .plainText : .plainText)
+    }
+
+    private func prepareExport(format: ExportFormat) async {
+        guard let recording = viewModel.selectedRecording else { return }
+        isPreparingExport = true
+        defer { isPreparingExport = false }
+        do {
+            let text = try await viewModel.exportText(for: recording, format: format)
+            self.exportFormat = format
+            self.exportSuggestedName = suggestedFilename(for: recording, format: format)
+            self.exportDocument = MinutesExportDocument(text: text, format: format)
+        } catch {
+            viewModel.reportExportFailure("エクスポート用データの生成に失敗しました: \(String(describing: error))")
+        }
+    }
+
+    private func suggestedFilename(for recording: Recording, format: ExportFormat) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyyMMdd"
+        let dateStr = formatter.string(from: recording.startedAt)
+        let safeTitle = recording.title
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+        return "\(safeTitle)_\(dateStr)"
+        // 拡張子は SwiftUI が contentType から自動で付与する
+        // 形式選択結果は exportFormat 経由で反映される
+        // （format 引数自体は将来の拡張用に残しておく）
     }
 
     private var isSummaryAvailable: Bool {
@@ -332,6 +412,45 @@ private struct ActionItemRow: View {
                 .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - Export Document
+
+/// `.fileExporter` 用のドキュメント。テキストと選択フォーマットを保持する。
+///
+/// macOS 26 の `FileDocument` は値型でなければならないため、`struct` で実装する。
+private struct MinutesExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] {
+        // 読み込みは想定しないが、プロトコル要求のため両方宣言する
+        var types: [UTType] = [.plainText]
+        if let md = UTType("net.daringfireball.markdown") {
+            types.append(md)
+        }
+        return types
+    }
+
+    static var writableContentTypes: [UTType] { readableContentTypes }
+
+    let text: String
+    let format: ExportFormat
+
+    init(text: String, format: ExportFormat) {
+        self.text = text
+        self.format = format
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        let data = configuration.file.regularFileContents ?? Data()
+        self.text = String(data: data, encoding: .utf8) ?? ""
+        self.format = .markdown
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let data = Data(text.utf8)
+        let wrapper = FileWrapper(regularFileWithContents: data)
+        wrapper.preferredFilename = nil // SwiftUI が defaultFilename + 拡張子を使う
+        return wrapper
     }
 }
 

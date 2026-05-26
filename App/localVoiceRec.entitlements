@@ -17,9 +17,11 @@
 		- com.apple.security.network.server
 	-->
 
-	<!-- ユーザーが録音ファイルをエクスポートしたい場合のみ将来検討:
-		- com.apple.security.files.user-selected.read-write
-		現時点は付けない（サンドボックス内に閉じる）
+	<!-- Save Panel 用: 議事録 Markdown / プレーンテキストのエクスポート先に書き込む。
+		ユーザーが NSSavePanel で明示的に選んだファイルのみ対象。
+		ネットワーク entitlement とは無関係（オンデバイス完結要件は維持）。
 	-->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 </dict>
 </plist>
