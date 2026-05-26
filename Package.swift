@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "TranscriptionKit", targets: ["TranscriptionKit"]),
         .library(name: "SummaryKit", targets: ["SummaryKit"]),
         .library(name: "AppUI", targets: ["AppUI"]),
+        .library(name: "ExportKit", targets: ["ExportKit"]),
         .executable(name: "AudioTapPoC", targets: ["AudioTapPoC"]),
     ],
     targets: [
@@ -52,10 +53,17 @@ let package = Package(
             path: "Sources/SummaryKit"
         ),
 
+        // ─── Export ───
+        .target(
+            name: "ExportKit",
+            dependencies: ["Contracts"],
+            path: "Sources/ExportKit"
+        ),
+
         // ─── UI ───
         .target(
             name: "AppUI",
-            dependencies: ["Contracts"],
+            dependencies: ["Contracts", "ExportKit"],
             path: "Sources/AppUI"
         ),
 
@@ -102,6 +110,11 @@ let package = Package(
             name: "IntegrationTests",
             dependencies: ["TranscriptionKit", "Contracts"],
             path: "Tests/IntegrationTests"
+        ),
+        .testTarget(
+            name: "ExportKitTests",
+            dependencies: ["ExportKit", "Contracts"],
+            path: "Tests/ExportKitTests"
         ),
     ]
 )
