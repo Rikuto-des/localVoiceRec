@@ -72,5 +72,10 @@ let package = Package(
             dependencies: ["Contracts"],
             path: "Tests/ContractsTests"
         ),
+        .testTarget(
+            name: "DataStoreTests",
+            dependencies: ["DataStore", "Contracts"],
+            path: "Tests/DataStoreTests"
+        ),
     ]
 )
