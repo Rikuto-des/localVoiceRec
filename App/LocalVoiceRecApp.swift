@@ -30,8 +30,7 @@ struct LocalVoiceRecApp: App {
             repository = InMemoryRecordingRepository()
         }
         let transcription = TranscriptionKitModule.makeService()
-        // SummaryKit は S4 で実装予定。それまでは Mock。
-        let summary: any SummaryService = FakeSummaryService()
+        let summary = SummaryKitModule.makeService()
 
         self.capture = capture
         self.repository = repository
