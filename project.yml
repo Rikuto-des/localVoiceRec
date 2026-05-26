@@ -1,0 +1,54 @@
+name: localVoiceRec
+
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  localVoiceRec:
+    path: .
+
+targets:
+  localVoiceRec:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: App
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/localVoiceRec.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.localVoiceRec
+        PRODUCT_NAME: localVoiceRec
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        COMBINE_HIDPI_IMAGES: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+    dependencies:
+      - package: localVoiceRec
+        product: AppUI
+      - package: localVoiceRec
+        product: AudioCapture
+      - package: localVoiceRec
+        product: DataStore
+      - package: localVoiceRec
+        product: TranscriptionKit
+      - package: localVoiceRec
+        product: SummaryKit
+      - package: localVoiceRec
+        product: Contracts
