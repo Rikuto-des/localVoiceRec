@@ -36,3 +36,10 @@ Icon
 *.m4a
 *.wav
 *.aiff
+
+# PoC output
+Tools/AudioTapPoC/output/
+
+# Plan / scratch
+.plans/
+

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 必須: App Sandbox を有効化 -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- マイク収音 (AVAudioEngine 用) -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+
+	<!-- 注意: ネットワーク entitlement は意図的に付与していない -->
+	<!--
+		付けないキー (オンデバイス完結要件のため):
+		- com.apple.security.network.client
+		- com.apple.security.network.server
+	-->
+
+	<!-- ユーザーが録音ファイルをエクスポートしたい場合のみ将来検討:
+		- com.apple.security.files.user-selected.read-write
+		現時点は付けない（サンドボックス内に閉じる）
+	-->
+</dict>
+</plist>

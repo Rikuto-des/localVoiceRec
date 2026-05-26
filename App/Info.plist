@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ja_JP</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+
+	<!-- メニューバー常駐 (Dock アイコンを出さない) -->
+	<key>LSUIElement</key>
+	<true/>
+
+	<!-- 必須権限プロンプト文字列 -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>会議の自分側の音声を録音し、デバイス内で文字起こしと要約を行うために使用します。録音データは外部に送信されません。</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>会議の相手側の音声（Mac のシステム音声）を録音し、デバイス内で文字起こしと要約を行うために使用します。録音データは外部に送信されません。</string>
+</dict>
+</plist>
