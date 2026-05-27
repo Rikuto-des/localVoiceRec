@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ExportKit
+@testable import AppUI
 import Contracts
 
 @Suite("ExportKit")

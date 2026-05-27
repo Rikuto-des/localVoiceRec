@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import Contracts
-import ExportKit
 
 /// 一覧表示用の録音状態。
 public enum RecordingStatus: Sendable, Hashable {
@@ -476,7 +475,7 @@ public final class AppViewModel {
     ///
     /// View 層は `.fileExporter` のドキュメント生成時にこのメソッドを呼ぶ。
     /// 失敗時は throws する（呼び出し側で `lastError` への反映を行う）。
-    public func makeMinutes(for recording: Recording) async throws -> MeetingMinutes {
+    func makeMinutes(for recording: Recording) async throws -> MeetingMinutes {
         let loadedSegments = try await repository.loadSegments(for: recording.id)
         let loadedSummary = try await repository.loadSummary(for: recording.id)
         let sorted = loadedSegments.sorted { $0.startSec < $1.startSec }
@@ -488,7 +487,7 @@ public final class AppViewModel {
     }
 
     /// 指定フォーマットでエクスポート用テキストを生成する。
-    public func exportText(for recording: Recording, format: ExportFormat) async throws -> String {
+    func exportText(for recording: Recording, format: ExportFormat) async throws -> String {
         let minutes = try await makeMinutes(for: recording)
         switch format {
         case .markdown:
@@ -500,7 +499,7 @@ public final class AppViewModel {
 
     /// エクスポート完了 / 失敗時の UI 通知用フック。
     /// View 側で `lastError` を更新したい場合に使う簡易セッタ。
-    public func reportExportFailure(_ message: String) {
+    func reportExportFailure(_ message: String) {
         lastError = message
     }
 

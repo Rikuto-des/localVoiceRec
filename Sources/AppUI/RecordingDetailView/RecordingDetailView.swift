@@ -1,7 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import Contracts
-import ExportKit
 import AppKit
 
 /// 個別録音の詳細ビュー。

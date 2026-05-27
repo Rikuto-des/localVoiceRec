@@ -9,8 +9,8 @@ import Contracts
 /// - H2: 概要 / 決定事項 / アクションアイテム / 未解決の問い / レビュー項目
 /// - `---` の区切り
 /// - H2: 文字起こし（タイムスタンプつき）
-public enum MarkdownExporter {
-    public static func render(_ minutes: MeetingMinutes) -> String {
+enum MarkdownExporter {
+    static func render(_ minutes: MeetingMinutes) -> String {
         var out = ""
 
         // ─── ヘッダ ───

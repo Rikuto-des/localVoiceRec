@@ -9,8 +9,8 @@ import Contracts
 /// - 太字 / 強調 (`**`, `*`, `__`, `_`) を除去
 /// - 引用 (`>`) 行頭を除去
 /// - 水平線 `---` は空行に潰す
-public enum PlainTextExporter {
-    public static func render(_ minutes: MeetingMinutes) -> String {
+enum PlainTextExporter {
+    static func render(_ minutes: MeetingMinutes) -> String {
         var out = ""
 
         // ─── ヘッダ ───
