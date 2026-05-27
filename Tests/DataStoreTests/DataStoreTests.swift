@@ -333,6 +333,112 @@ struct CascadeTests {
     }
 }
 
+@Suite("RecordingRepositoryImpl — listWithStatus batch API")
+struct ListWithStatusTests {
+    @Test func emptyStoreReturnsEmpty() async throws {
+        let repo = try makeInMemoryRepo()
+        let rows = try await repo.listWithStatus(limit: nil, offset: nil)
+        #expect(rows.isEmpty)
+    }
+
+    @Test func recordingWithoutSegmentsOrSummary() async throws {
+        let repo = try makeInMemoryRepo()
+        let rec = try makeRecordingDTO(title: "bare")
+        try await repo.create(rec)
+
+        let rows = try await repo.listWithStatus(limit: nil, offset: nil)
+        #expect(rows.count == 1)
+        #expect(rows[0].recording.id == rec.id)
+        #expect(rows[0].hasSegments == false)
+        #expect(rows[0].hasSummary == false)
+    }
+
+    @Test func recordingWithSegmentsOnly() async throws {
+        let repo = try makeInMemoryRepo()
+        let rec = try makeRecordingDTO(title: "segs")
+        try await repo.create(rec)
+        try await repo.saveSegments(
+            [TranscriptSegment(recordingID: rec.id, source: .mic, startSec: 0, endSec: 1, text: "x", isFinal: true)],
+            for: rec.id
+        )
+
+        let rows = try await repo.listWithStatus(limit: nil, offset: nil)
+        #expect(rows.count == 1)
+        #expect(rows[0].hasSegments == true)
+        #expect(rows[0].hasSummary == false)
+    }
+
+    @Test func recordingWithSummaryOnly() async throws {
+        let repo = try makeInMemoryRepo()
+        let rec = try makeRecordingDTO(title: "sum")
+        try await repo.create(rec)
+        try await repo.saveSummary(
+            SummaryDocument(
+                recordingID: rec.id,
+                overview: "x",
+                decisions: [],
+                actionItems: [],
+                openQuestions: [],
+                reviewItems: [],
+                generatedAt: Date()
+            )
+        )
+
+        let rows = try await repo.listWithStatus(limit: nil, offset: nil)
+        #expect(rows.count == 1)
+        #expect(rows[0].hasSegments == false)
+        #expect(rows[0].hasSummary == true)
+    }
+
+    @Test func recordingWithSegmentsAndSummary() async throws {
+        let repo = try makeInMemoryRepo()
+        let rec = try makeRecordingDTO(title: "both")
+        try await repo.create(rec)
+        try await repo.saveSegments(
+            [TranscriptSegment(recordingID: rec.id, source: .mic, startSec: 0, endSec: 1, text: "x", isFinal: true)],
+            for: rec.id
+        )
+        try await repo.saveSummary(
+            SummaryDocument(
+                recordingID: rec.id,
+                overview: "x",
+                decisions: [],
+                actionItems: [],
+                openQuestions: [],
+                reviewItems: [],
+                generatedAt: Date()
+            )
+        )
+
+        let rows = try await repo.listWithStatus(limit: nil, offset: nil)
+        #expect(rows.count == 1)
+        #expect(rows[0].hasSegments == true)
+        #expect(rows[0].hasSummary == true)
+    }
+
+    @Test func ordersByStartedAtDescendingSameAsList() async throws {
+        let repo = try makeInMemoryRepo()
+        let older = try makeRecordingDTO(title: "Older")
+        let newerSrc = try makeRecordingDTO(title: "Newer")
+        let newer = Recording(
+            id: newerSrc.id,
+            title: newerSrc.title,
+            startedAt: older.startedAt.addingTimeInterval(3600),
+            endedAt: older.endedAt.addingTimeInterval(3600),
+            micAudioURL: newerSrc.micAudioURL,
+            systemAudioURL: newerSrc.systemAudioURL,
+            createdAt: newerSrc.createdAt
+        )
+        try await repo.create(older)
+        try await repo.create(newer)
+
+        let rows = try await repo.listWithStatus(limit: nil, offset: nil)
+        #expect(rows.count == 2)
+        #expect(rows.first?.recording.title == "Newer")
+        #expect(rows.last?.recording.title == "Older")
+    }
+}
+
 @Suite("RecordingRepositoryImpl — file deletion")
 struct FileDeletionTests {
     @Test func deleteFilesImmediatelyRemovesWAVs() async throws {

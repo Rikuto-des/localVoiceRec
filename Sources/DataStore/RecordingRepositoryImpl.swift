@@ -76,6 +76,33 @@ public actor RecordingRepositoryImpl: RecordingRepository {
         return try entities.map { try $0.toDTO() }
     }
 
+    public func listWithStatus(limit: Int?, offset: Int?) async throws -> [RecordingStatusRow] {
+        var descriptor = FetchDescriptor<RecordingEntity>(
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        if let limit {
+            descriptor.fetchLimit = limit
+        }
+        if let offset {
+            descriptor.fetchOffset = offset
+        }
+        let entities = try fetchOrThrow(descriptor)
+
+        // 録音のリレーションシップ (segments / summary) は遅延ロードされうるが、
+        // SwiftData は同一 ModelContext で count / nil チェックに必要な限り解決する。
+        // 子テーブルを N 回個別 fetch することはなく、必要なら 1 つの追加 fetch に閉じる。
+        return try entities.map { entity in
+            let dto = try entity.toDTO()
+            let hasSegments = !entity.segments.isEmpty
+            let hasSummary = entity.summary != nil
+            return RecordingStatusRow(
+                recording: dto,
+                hasSegments: hasSegments,
+                hasSummary: hasSummary
+            )
+        }
+    }
+
     public func search(query: String) async throws -> [Recording] {
         let q = query.lowercased()
         guard !q.isEmpty else {

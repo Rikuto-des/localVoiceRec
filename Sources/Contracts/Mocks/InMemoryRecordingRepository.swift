@@ -26,6 +26,19 @@ public actor InMemoryRecordingRepository: RecordingRepository {
         return Array(sorted[start..<end])
     }
 
+    public func listWithStatus(limit: Int?, offset: Int?) async throws -> [RecordingStatusRow] {
+        let page = try await list(limit: limit, offset: offset)
+        return page.map { rec in
+            let hasSegs = !(segments[rec.id]?.isEmpty ?? true)
+            let hasSum = summaries[rec.id] != nil
+            return RecordingStatusRow(
+                recording: rec,
+                hasSegments: hasSegs,
+                hasSummary: hasSum
+            )
+        }
+    }
+
     public func search(query: String) async throws -> [Recording] {
         let q = query.lowercased()
         guard !q.isEmpty else { return try await list(limit: nil, offset: nil) }

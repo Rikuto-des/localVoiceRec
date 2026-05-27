@@ -249,21 +249,27 @@ public final class AppViewModel {
 
     public func refreshList() async {
         do {
-            recordings = try await repository.list(limit: nil, offset: nil)
-            // 各録音の状態を一括算出（一覧バッジ用）
+            // N+1 を避けるため、録音 + segments/summary の存在フラグを 1 fetch で取得する。
+            let rows = try await repository.listWithStatus(limit: nil, offset: nil)
+            var newRecordings: [Recording] = []
+            newRecordings.reserveCapacity(rows.count)
             var map: [UUID: RecordingStatus] = [:]
-            for r in recordings {
-                if transcribingIDs.contains(r.id) { map[r.id] = .transcribing; continue }
-                if summarizingIDs.contains(r.id) { map[r.id] = .summarizing; continue }
-                let segs = (try? await repository.loadSegments(for: r.id)) ?? []
-                if segs.isEmpty {
+            for row in rows {
+                let r = row.recording
+                newRecordings.append(r)
+                if transcribingIDs.contains(r.id) {
+                    map[r.id] = .transcribing
+                } else if summarizingIDs.contains(r.id) {
+                    map[r.id] = .summarizing
+                } else if !row.hasSegments {
                     map[r.id] = emptyTranscriptIDs.contains(r.id) ? .emptyTranscript : .pending
-                } else if (try? await repository.loadSummary(for: r.id)) != nil {
+                } else if row.hasSummary {
                     map[r.id] = .completed
                 } else {
                     map[r.id] = .transcribed
                 }
             }
+            recordings = newRecordings
             recordingStatuses = map
             lastError = nil
         } catch {
