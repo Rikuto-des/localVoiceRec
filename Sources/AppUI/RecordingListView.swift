@@ -75,10 +75,29 @@ struct RecordingListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
+                    Task { await viewModel.retryAllPendingTranscriptions() }
+                } label: {
+                    Label("未処理を一括処理", systemImage: "wand.and.stars")
+                }
+                .disabled(!hasPendingWork || viewModel.isTranscribing)
+                .help("未文字起こし・無音・失敗の録音をまとめて再処理します")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
                     Task { await viewModel.refreshList() }
                 } label: {
                     Label("更新", systemImage: "arrow.clockwise")
                 }
+            }
+        }
+    }
+
+    /// 一括 retry 対象が 1 件でもあるか。
+    private var hasPendingWork: Bool {
+        viewModel.recordings.contains { r in
+            switch viewModel.status(for: r.id) {
+            case .pending, .emptyTranscript, .failed: return true
+            default: return false
             }
         }
     }

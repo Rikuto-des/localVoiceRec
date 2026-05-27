@@ -6,6 +6,7 @@ import Contracts
 /// 録音操作（開始 / 停止 / 一時停止 / 再開）と、録音一覧ウィンドウへの導線を提供する。
 struct MenuBarContentView: View {
     @Bindable var viewModel: AppViewModel
+    let captureService: any AudioCaptureService
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -13,6 +14,10 @@ struct MenuBarContentView: View {
             header
             Divider()
             statusDescription
+            if viewModel.isActivelyRecording || viewModel.isPaused {
+                LiveWaveformView(service: captureService)
+                    .padding(.vertical, Theme.Spacing.xs)
+            }
             controlButtons
             if let lastError = viewModel.lastError {
                 Text(lastError)
@@ -166,12 +171,14 @@ struct MenuBarContentView: View {
 }
 
 #Preview("Idle") {
-    MenuBarContentView(
+    let capture = FakeAudioCaptureService()
+    return MenuBarContentView(
         viewModel: AppViewModel(
-            capture: FakeAudioCaptureService(),
+            capture: capture,
             repository: InMemoryRecordingRepository(seed: [SampleData.recording]),
             transcription: FakeTranscriptionService(),
             summary: FakeSummaryService()
-        )
+        ),
+        captureService: capture
     )
 }
