@@ -175,7 +175,7 @@
       <li>
         <p class="step-num">02 — 録音と同時進行の文字起こし</p>
         <h3>同じ音声バッファを 3 経路に同時配信。</h3>
-        <p>1 つの PCM バッファを、(a) ALAC ファイル書き込み、(b) 波形メーター、(c) SpeechAnalyzer への投入、に同期 fan-out します。バッファのコピーを増やさない 1-pass 構造のため、録音中から日本語・英語の文字起こしが伸びていき、停止と同時に確定済みテキストが揃います。</p>
+        <p>1 つの PCM バッファを、(a) WAV ファイル書き込み、(b) 波形メーター、(c) SpeechAnalyzer への投入、に同期 fan-out します。バッファのコピーを増やさない 1-pass 構造のため、録音中から日本語・英語の文字起こしが伸びていき、停止と同時に確定済みテキストが揃います。</p>
       </li>
       <li>
         <p class="step-num">03 — 構造化要約</p>
@@ -243,7 +243,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
       <div><dt>DMG サイズ</dt><dd>約 1.0 MB</dd></div>
       <div><dt>.app サイズ</dt><dd>約 1.5 MB</dd></div>
       <div><dt>外部依存</dt><dd>なし (OS 標準フレームワークのみ)</dd></div>
-      <div><dt>録音形式</dt><dd>ALAC (Apple Lossless / .m4a)</dd></div>
+      <div><dt>録音形式</dt><dd>Linear PCM (WAV)</dd></div>
     </dl>
   </div>
 </section>
@@ -272,14 +272,14 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
       </div>
 
       <span class="download-hash-label">SHA-256</span>
-      <code class="download-hash" id="sha">414f16fd88f8d688c91a36798c6ef807f540972504cb24a363b333bda4e24fb6</code>
+      <code class="download-hash" id="sha">cc17e9463af7f60a5ceaf1bbd4634015eecce77f09e08ae5153fb825fd72466b</code>
       <button id="copy-sha" class="btn-copy">SHA をコピー</button>
 
       <code class="verify-cmd">shasum -a 256 ~/Downloads/localVoiceRec-0.1.0.dmg</code>
 
       <div class="download-note">
         <strong>v0.1.0 — 初回リリース</strong><br />
-        ・マイク + システム音声の 2 チャンネル録音 (ALAC / .m4a で保存)<br />
+        ・マイク + システム音声の 2 チャンネル録音 (Linear PCM / WAV)<br />
         ・AUVoiceProcessing IO による AEC・ノイズ抑制・AGC<br />
         ・録音と同時進行のオンデバイス文字起こし (SpeechAnalyzer)<br />
         ・Foundation Models によるオンデバイス構造化要約<br />
@@ -340,8 +340,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
         <div class="answer">
           アプリのサンドボックス内、
           <code>~/Library/Containers/com.example.localVoiceRec/</code>
-          の下に保存されます。形式は ALAC (Apple Lossless) を <code>.m4a</code> コンテナに格納。
-          PCM の WAV と比べてファイルサイズは概ね 50〜70% になり、可逆圧縮のため音質劣化はありません。
+          の下に保存されます。形式は Linear PCM (WAV) で、可逆・非圧縮。
           アプリから個別／一括削除でき、削除時はファイル実体も同時に消去されます。
         </div>
       </details>
@@ -357,7 +356,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
       <details>
         <summary>録音が終わってから文字起こしを待つ必要がある？</summary>
         <div class="answer">
-          ありません。1 つの音声バッファを「ALAC への書き込み」「波形メーター」「SpeechAnalyzer への投入」に
+          ありません。1 つの音声バッファを「WAV への書き込み」「波形メーター」「SpeechAnalyzer への投入」に
           同期 fan-out する 1-pass 構造のため、録音中からリアルタイムに文字起こしが伸びていきます。
           停止と同時に確定済みのテキストが揃った状態になり、続けて要約を生成します。
         </div>

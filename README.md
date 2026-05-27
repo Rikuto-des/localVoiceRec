@@ -7,8 +7,8 @@
 ## ハイライト
 
 - **AEC + NS + AGC**: マイク側に AUVoiceProcessing IO を有効化し、OS 標準のエコーキャンセル・ノイズ抑制・自動ゲイン調整を適用 (`Sources/AudioTapKit/MicCapture.swift`)
-- **ALAC 可逆圧縮**: 録音は Apple Lossless を `.m4a` コンテナで保存。PCM WAV 比でファイルサイズが概ね 50〜70% (`Sources/AudioTapKit/WAVFileWriter.swift`)
-- **1-pass fan-out**: 1 つの PCM バッファを「ALAC 書き込み / レベルメーター / 録音中文字起こし」に同期 fan-out。バッファコピーを増やさない (`Sources/AudioCapture/AudioCaptureServiceImpl.swift` の `WriterSink`)
+- **可逆 PCM 保存**: 録音は Linear PCM (WAV) で保存。可逆・非圧縮 (`Sources/AudioTapKit/WAVFileWriter.swift`)。ALAC コードパスも実装済みだが、Voice Processing の Float32 出力との互換性が未対応のため WAV を既定とする
+- **1-pass fan-out**: 1 つの PCM バッファを「WAV 書き込み / レベルメーター / 録音中文字起こし」に同期 fan-out。バッファコピーを増やさない (`Sources/AudioCapture/AudioCaptureServiceImpl.swift` の `WriterSink`)
 - **録音と同時進行の文字起こし**: SpeechAnalyzer の `transcribeLive` API に流し込み、isFinal 確定セグメントを逐次返す (`Sources/TranscriptionKit/SpeechAnalyzerService.swift`)
 - **SPSC ロックフリーリングバッファ**: System Audio 側で採用 (`Sources/AudioTapKit/SPSCByteRingBuffer.swift`)
 - **中断ハンドリング**: スリープ / オーディオ HW 切替 / engine 構成変更を観測して安全停止 (`AudioCaptureServiceImpl.handleInterruption`)
@@ -28,7 +28,7 @@
 | UI | SwiftUI（MenuBarExtra） |
 | マイク収音 | AVAudioEngine + AUVoiceProcessing IO (AEC/NS/AGC) |
 | システム音声収音 | Core Audio process tap + SPSC ロックフリーリングバッファ |
-| 録音形式 | ALAC (Apple Lossless / .m4a) |
+| 録音形式 | Linear PCM (WAV) |
 | 文字起こし | SpeechAnalyzer（macOS 26 標準・録音中ストリーミング対応） |
 | 要約 | Foundation Models（オンデバイス・`@Generable`） |
 | 永続化 | SwiftData |

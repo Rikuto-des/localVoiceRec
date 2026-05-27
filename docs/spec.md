@@ -96,8 +96,8 @@
  (2ch取得)   (ローカル)      (ローカル3B)
 ```
 ### 7.2 データフロー
-1. **収音** → マイク（自分・AVAudioEngine + AUVoiceProcessing IO で AEC/NS/AGC 適用）＋システム音声（相手・Core Audio process tap、SPSC ロックフリーリングバッファ経由）を 2 チャンネルで取得し、ALAC で `.m4a` に保存。
-2. **1-pass fan-out** → 1 つの PCM バッファを (a) ALAC 書き込み、(b) UI 用レベルメーター、(c) SpeechAnalyzer への投入、の 3 経路に同期 fan-out。バッファコピーは増やさない。
+1. **収音** → マイク（自分・AVAudioEngine + AUVoiceProcessing IO で AEC/NS/AGC 適用）＋システム音声（相手・Core Audio process tap、SPSC ロックフリーリングバッファ経由）を 2 チャンネルで取得し、Linear PCM (WAV) で保存。
+2. **1-pass fan-out** → 1 つの PCM バッファを (a) WAV 書き込み、(b) UI 用レベルメーター、(c) SpeechAnalyzer への投入、の 3 経路に同期 fan-out。バッファコピーは増やさない。
 3. **録音中文字起こし** → 各チャンネルを SpeechAnalyzer の `transcribeLive` に流し、isFinal セグメントを逐次反映。録音停止と同時に確定済みテキストが揃う。
 4. **要約** → 文字起こしテキストを Foundation Models（`@Generable`）に渡し、構造化要約を生成。
 5. **保存** → 音声 / 文字起こし / 要約をローカルに保存。
@@ -110,7 +110,7 @@
 | UI | SwiftUI（`MenuBarExtra`） | メニューバー常駐 |
 | マイク収音 | AVAudioEngine + AUVoiceProcessing IO (`setVoiceProcessingEnabled(true)`) | OS 標準の AEC / NS / AGC を適用 |
 | システム音声収音 | Core Audio process tap（`AudioHardwareCreateProcessTap` / `CATapDescription`）+ SPSC ロックフリーリングバッファ | 2ch のサンプルレート・タイムスタンプ同期に注意。 |
-| 録音形式 | ALAC (Apple Lossless) を `.m4a` コンテナで保存 | PCM WAV 比 50〜70% のサイズ、可逆 |
+| 録音形式 | Linear PCM (WAV) | 可逆・非圧縮。ALAC は Voice Processing との互換性が未対応のため一時退避 |
 | ストリーム配信 | `WriterSink` による 1-pass 同期 fan-out (writer / level / live ASR) | バッファコピーを増やさない |
 | 文字起こし | SpeechAnalyzer (`transcribeLive` で録音中ストリーミング) | macOS 26 標準・オンデバイス |
 | 要約 | Foundation Models | オンデバイス約3B・`@Generable` で構造化出力 |
