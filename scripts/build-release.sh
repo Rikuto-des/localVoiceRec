@@ -43,26 +43,30 @@ xcodebuild \
     CODE_SIGNING_ALLOWED=NO \
     build
 
-# 3) .app を dist/ に
+# 3) .app を **/tmp に取り出して** 署名する
+#
+# プロジェクトが ~/Desktop / ~/Documents の iCloud Drive 配下にあると、
+# File Provider が com.apple.FinderInfo / fileprovider.fpfs#P を再帰的・継続的に
+# 付与してくる。codesign --verify が「detritus not allowed」で落ちる原因。
+# iCloud 非同期領域である /tmp に取り出してから署名 → 戻すことで回避する。
 APP_PATH=$(find "$DERIVED_DATA/Build/Products/Release" -name "localVoiceRec.app" -type d | head -1)
 if [[ -z "$APP_PATH" ]]; then
     echo "ERROR: built .app が見つかりません" >&2
     exit 1
 fi
-mkdir -p dist
-rm -rf "dist/localVoiceRec.app"
-cp -R "$APP_PATH" "dist/localVoiceRec.app"
 
-# 4) xattr を掃除してから codesign
-APP="dist/localVoiceRec.app"
-echo "==> xattr -cr $APP"
-xattr -cr "$APP"
+STAGING_DIR=$(mktemp -d /tmp/lvr-sign.XXXXXX)
+STAGING_APP="$STAGING_DIR/localVoiceRec.app"
+echo "==> staging into $STAGING_APP"
+cp -R "$APP_PATH" "$STAGING_APP"
+xattr -cr "$STAGING_APP"
 
 ENTITLEMENTS="App/localVoiceRec.entitlements"
+# entitlement ファイルも掃除（読み込み時に拒否されるケースに備える）
+xattr -c "$ENTITLEMENTS" 2>/dev/null || true
 
 if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
     # Keychain から該当 team の Developer ID Application 証明書 SHA-1 を取得。
-    # `security find-identity` は "SHA1  "Name (TEAM_ID)"" 形式で出すので、TEAM_ID で grep。
     SIGN_IDENTITY=$(security find-identity -v -p codesigning \
         | grep "Developer ID Application" \
         | grep "(${DEVELOPMENT_TEAM})" \
@@ -74,28 +78,27 @@ if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
         exit 1
     fi
     echo "==> codesign with: $SIGN_IDENTITY"
-    # --deep は非推奨だが、SwiftPM の動的フレームワークを含むため使用。
-    # 個別署名にしたい場合は Frameworks 配下を for ループで先に署名すること。
     codesign --force --options runtime \
         --entitlements "$ENTITLEMENTS" \
         --sign "$SIGN_IDENTITY" \
         --timestamp \
         --deep \
-        "$APP"
-    # iCloud File Provider (Desktop/Documents 同期) が署名後に
-    # com.apple.FinderInfo / fileprovider#P を再付与することがある。
-    # verify 前にもう一度掃除する。
-    echo "==> xattr -cr (post-sign cleanup)"
-    xattr -cr "$APP"
-    echo "==> codesign --verify --deep --strict"
-    codesign --verify --deep --strict --verbose=2 "$APP"
+        "$STAGING_APP"
+    echo "==> codesign --verify --deep --strict (in /tmp)"
+    codesign --verify --deep --strict --verbose=2 "$STAGING_APP"
 else
     echo "(warn) DEVELOPMENT_TEAM 未設定: adhoc 署名で代用（配布不可、ローカル検証のみ）"
     codesign --force --options runtime \
         --entitlements "$ENTITLEMENTS" \
         --sign - \
         --deep \
-        "$APP"
+        "$STAGING_APP"
 fi
+
+# 4) 署名済み .app を dist/ に移動
+mkdir -p dist
+rm -rf "dist/localVoiceRec.app"
+mv "$STAGING_APP" "dist/localVoiceRec.app"
+rm -rf "$STAGING_DIR"
 
 echo "OK: dist/localVoiceRec.app"

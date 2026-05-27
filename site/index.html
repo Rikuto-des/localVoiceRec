@@ -24,7 +24,7 @@
   <div class="wrap">
     <span class="topstripe-left">localVoiceRec</span>
     <span class="topstripe-mid">macOS · オンデバイス · 社内向け</span>
-    <span class="topstripe-right">v0.1.6 · 2026 · Issue 07</span>
+    <span class="topstripe-right">v0.1.7 · 2026 · Issue 08</span>
   </div>
 </header>
 
@@ -339,10 +339,10 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 
     <div class="download-card">
       <div class="download-left">
-        <p class="download-version">version <strong>0.1.6</strong></p>
-        <p class="download-build">released 2026-05-27 · build 7</p>
-        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.6.dmg" download>
-          <span class="btn-label">localVoiceRec-0.1.6.dmg</span>
+        <p class="download-version">version <strong>0.1.7</strong></p>
+        <p class="download-build">released 2026-05-27 · build 8</p>
+        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.7.dmg" download>
+          <span class="btn-label">localVoiceRec-0.1.7.dmg</span>
           <span class="btn-meta">.dmg · 1.0 MB</span>
         </a>
         <p class="download-note">
@@ -350,8 +350,10 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
           初回起動で Gatekeeper 警告は出ません。SHA-256 を照合の上ご利用ください。
         </p>
         <p class="download-note" style="margin-top:1rem; padding-top:1rem; border-top:1px solid var(--rule);">
-          <strong>v0.1.6 の変更点</strong><br />
-          ・<strong>文字起こしの致命バグ修正</strong>：AVAudioConverter の状態リークで最初の数音節以降が拾えなかった問題を解消（毎チャンクで fresh converter を生成）<br />
+          <strong>v0.1.7 の変更点</strong><br />
+          ・<strong>全文テキストの折りたたみ表示</strong>：詳細画面で「Slack 等に貼り付けやすい形式の全文」が DisclosureGroup で展開でき、TextEditor で選択 → ⌘C コピーや「全文をコピー」ボタンが使える<br />
+          ・<strong>システム音声「未要求」誤表示の修正</strong>：実際に system 音声を録音できた瞬間に「許可済み」へ自動遷移（UserDefaults 永続化）<br />
+          ・診断パネルに「初回録音で実音が取れた時点で許可済みになる」旨の説明文を追加<br />
           ・録音ファイルを Finder で開くボタン（詳細画面ヘッダ / 一覧右クリック / 診断パネル）<br />
           ・初回起動時にマイク権限プロンプトを早出し<br />
           ・録音開始前に権限未要求なら自動でプロンプト（無音録音事故を防止）<br />
@@ -371,11 +373,11 @@ tccutil reset SystemAudioRecording com.example.localVoiceRec</code></pre>
 
       <div class="download-right">
         <p class="download-label">SHA-256</p>
-        <pre class="hash"><code id="sha">7b07ef0c95f932e54ef11f5422472fcd3404ffa9caafabe1d18c3233be9cd3a7</code></pre>
+        <pre class="hash"><code id="sha">1c081d241451461213d702c479779a40d4c506063cd073077eefa70236465197</code></pre>
         <button id="copy-sha" class="ghost btn-copy">SHA をコピー</button>
 
         <p class="download-label" style="margin-top:1.5rem">検証コマンド</p>
-        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.6.dmg</code></pre>
+        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.7.dmg</code></pre>
         <p class="download-label" style="margin-top:1.5rem">公証の確認</p>
         <pre class="hash"><code>spctl --assess --type execute -vv localVoiceRec.app</code></pre>
         <p class="download-fineprint">
