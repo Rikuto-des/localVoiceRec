@@ -293,6 +293,23 @@ public final class AppViewModel {
         }
     }
 
+    /// 自動要約を発火させるかの判定。
+    ///
+    /// Foundation Models (on-device 3B) は入力が極端に薄いと、もっともらしい内容を
+    /// 捏造する (ハルシネーション)。例: 「うん」「あ」のような相槌だけの transcript で
+    /// 「予算編成」「コスト削減」等の架空の議論内容を生成する。
+    ///
+    /// 自動要約は実コンテンツが一定量ある場合に限定する。閾値は実利テスト由来で
+    /// **空白除去後 60 文字以上 かつ 5 セグメント以上** とする。これ未満の場合は
+    /// 手動「要約を再生成」ボタンを押した時のみ要約する (ユーザーが明示的に判断)。
+    static func hasSubstantiveContent(segments: [TranscriptSegment]) -> Bool {
+        guard segments.count >= 5 else { return false }
+        let totalChars = segments
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).count }
+            .reduce(0, +)
+        return totalChars >= 60
+    }
+
     /// 録音停止後（および select で空 segments のとき）に呼ばれる、
     /// 文字起こし→要約の自動パイプライン。バックグラウンドで走る。
     private func runAutoPipeline(for recording: Recording) {
@@ -306,9 +323,10 @@ public final class AppViewModel {
             guard let self else { return }
             await self.transcribeRecording(recording)
             guard !Task.isCancelled else { return }
-            // 要約は文字起こしが何か拾えていた場合だけ
+            // 要約は実コンテンツが一定量ある場合のみ自動発火する (ハルシネーション防止)。
+            // 薄い入力でも手動「要約を再生成」ボタンからは実行可能。
             let saved = (try? await self.repository.loadSegments(for: recording.id)) ?? []
-            if !saved.isEmpty {
+            if Self.hasSubstantiveContent(segments: saved) {
                 await self.summarizeRecording(recording, segments: saved)
             }
         }
