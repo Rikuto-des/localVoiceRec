@@ -260,10 +260,17 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             transition(to: .failed(error: err))
             throw err
         }
-        // 録音ファイルは ALAC (Apple Lossless, m4a コンテナ) で保存する。
-        // PCM (WAV) 比で約 50-70% のサイズ削減。可逆圧縮なので品質劣化なし。
-        // 既存の .wav 録音 (旧バージョン) も AVAudioFile で読めるので互換性は維持される。
-        let audioContainer: WAVFileWriter.Format = .alac
+        // 録音ファイルは WAV (Linear PCM) で保存する。
+        //
+        // 注: 旧 .alac 既定は撤回。Voice Processing (AUVoiceProcessing IO) を
+        // 有効にしたマイク入力 (Float32 / 16kHz / mono) を ALAC エンコーダに
+        // 流すと `com.apple.coreaudio.avfaudio エラー 1685348671 ('dta?')`
+        // が発生し、ファイル書き込み/読み込みが失敗する。
+        // ALAC は Int16/24 のみ対応で Float32 を内部変換できないため。
+        //
+        // 再導入するには mic 側を事前に Float32 → Int16 へ手動変換するか、
+        // Voice Processing を切る必要がある。AEC のメリットを優先して WAV を採用。
+        let audioContainer: WAVFileWriter.Format = .wav
         let ext = audioContainer.fileExtension
         let micURL = outputDirectory.appendingPathComponent("mic.\(ext)")
         let systemURL = outputDirectory.appendingPathComponent("system.\(ext)")
