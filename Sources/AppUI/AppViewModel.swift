@@ -287,12 +287,24 @@ public final class AppViewModel {
     public func stopRecording() async {
         isBusy = true
         defer { isBusy = false }
+        // 停止直前のマイク観測値 (停止後は audioLevels が伸びないため、ここで撮っておく)。
+        let micWasActive = audioLevels.contains { $0.micPeak >= AudioLevelSnapshot.silenceThreshold }
         do {
             let recording = try await capture.stop()
             captureState = await capture.currentState
             try await repository.create(recording)
             lastError = nil
             await refreshList()
+            // C3: 停止後に systemFlow を確認し、システム音声だけが完全無音だった場合に警告。
+            // マイクが録れていない場合は別問題 (権限/HW) として警告を出さない (ノイズになる)。
+            let finalFlow = await capture.systemFlowSnapshot()
+            if micWasActive,
+               let flow = finalFlow,
+               (flow.bytesReceived == 0 || flow.nonZeroBufferCount == 0) {
+                lastError = "システム音声が記録されませんでした。画面収録権限を確認してください（システム設定 → プライバシーとセキュリティ）"
+            }
+            // 診断パネルの systemFlow も最新化しておく
+            await refreshDiagnostics()
             // 自動で文字起こし → 要約のパイプラインを開始（fire-and-forget）
             runAutoPipeline(for: recording)
         } catch {
@@ -662,11 +674,13 @@ public final class AppViewModel {
         let auth = await capture.authorizationStatus()
         let locales = await transcription.installedLocales()
         let summary = await self.summary.availability()
+        let systemFlow = await capture.systemFlowSnapshot()
         diagnostics = DiagnosticsInfo(
             micAuthorization: auth.microphone,
             systemAudioAuthorization: auth.systemAudio,
             installedLocales: locales.map(\.identifier),
-            summaryAvailability: summary
+            summaryAvailability: summary,
+            systemFlow: systemFlow
         )
     }
 
@@ -731,23 +745,29 @@ public struct DiagnosticsInfo: Sendable, Equatable {
     /// `Locale.identifier` の文字列配列（例: `"ja_JP"`, `"en_US"`）。
     public let installedLocales: [String]
     public let summaryAvailability: SummaryAvailability
+    /// SystemAudioTap の IOProc カウンタ。録音中はライブ値、停止後は最終スナップショット。
+    /// SystemAudioTap が存在しない実装 (Fake 等) では `nil`。
+    public let systemFlow: SystemFlowSnapshot?
 
     public init(
         micAuthorization: AudioAuthorizationStatus.State,
         systemAudioAuthorization: AudioAuthorizationStatus.State,
         installedLocales: [String],
-        summaryAvailability: SummaryAvailability
+        summaryAvailability: SummaryAvailability,
+        systemFlow: SystemFlowSnapshot? = nil
     ) {
         self.micAuthorization = micAuthorization
         self.systemAudioAuthorization = systemAudioAuthorization
         self.installedLocales = installedLocales
         self.summaryAvailability = summaryAvailability
+        self.systemFlow = systemFlow
     }
 
     public static let empty = DiagnosticsInfo(
         micAuthorization: .notDetermined,
         systemAudioAuthorization: .notDetermined,
         installedLocales: [],
-        summaryAvailability: .available
+        summaryAvailability: .available,
+        systemFlow: nil
     )
 }

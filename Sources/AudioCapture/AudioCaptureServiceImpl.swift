@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import AVFAudio
 @preconcurrency import AVFoundation
+import CoreAudio
 import Contracts
 import AudioTapKit
 import os.log
@@ -74,6 +75,10 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     /// 現在録音中のリソース束。`nil` なら idle。
     private var active: ActiveSession?
+
+    /// 直近セッションの SystemAudioTap flow スナップショット (停止後も保持).
+    /// `systemFlowSnapshot()` は録音中はライブ、停止後はこの値を返す。
+    private var lastSystemFlow: SystemFlowSnapshot?
 
     // MARK: - System notification observers (sleep / wake)
 
@@ -633,7 +638,14 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             diskWatchdogTask: diskWatchdogTask,
             liveASRTasks: liveASRTasks
         )
-        Self.logger.info("AudioCaptureServiceImpl.start: micFormat=\(String(describing: mic.captureFormat)) sysFormat=\(String(describing: tap.captureFormat))")
+        // 新セッション開始 → 旧 flow スナップショットを破棄
+        lastSystemFlow = nil
+        // C5: 録音開始ログを「1 行 JSON 風」に詳細化。トラブルシュート時に
+        // session id / フォーマット / 既定出力デバイスがログだけで把握できるようにする。
+        let outputName = Self.currentDefaultOutputDeviceName() ?? "<unknown>"
+        let micFmt = Self.describeFormat(mic.captureFormat)
+        let sysFmt = Self.describeFormat(tap.captureFormat)
+        Self.logger.info("start session: id=\(sessionID.uuidString, privacy: .public) micFormat=\(micFmt, privacy: .public) sysFormat=\(sysFmt, privacy: .public) output=\(outputName, privacy: .public)")
         transition(to: .recording(startedAt: now))
         return session
     }
@@ -688,6 +700,15 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         active.watchdogTask.cancel()
         active.diskWatchdogTask.cancel()
 
+        // ハードウェア停止前に最終 flow スナップショットを取得 (stop() 後はゼロに戻る可能性があるため)
+        let finalSystemFlow = SystemFlowSnapshot(
+            callCount: active.tap.ioProcCallCount,
+            bytesReceived: active.tap.receivedBytesTotal,
+            nonZeroBufferCount: active.tap.nonZeroBufferCount,
+            droppedPushCount: active.tap.droppedPushCount
+        )
+        lastSystemFlow = finalSystemFlow
+
         // ハードウェア停止 → ストリームの finish が伝搬 → consumer Task が自然終了する。
         active.mic.stop()
         active.tap.stop()
@@ -739,9 +760,84 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             micAudioURL: active.session.micAudioURL,
             systemAudioURL: active.session.systemAudioURL
         )
+
+        // C6: 録音停止ログを「1 行 JSON 風」に詳細化。最終カウンタを 1 箇所にまとめる。
+        let duration = endedAt.timeIntervalSince(startedAt)
+        let micBytes = active.micSink.bytesWritten
+        let sysBytes = active.systemSink.bytesWritten
+        let writerFailures = active.micSink.failureCount + active.systemSink.failureCount
+        Self.logger.info(
+            "stop session: id=\(active.session.id.uuidString, privacy: .public) duration=\(duration, format: .fixed(precision: 2)) micBytes=\(micBytes) sysBytes=\(sysBytes) callCount=\(finalSystemFlow.callCount) nonZero=\(finalSystemFlow.nonZeroBufferCount) drops=\(finalSystemFlow.droppedPushCount) writerFailures=\(writerFailures)"
+        )
+
         self.active = nil
         transition(to: .idle)
         return recording
+    }
+
+    // MARK: - System flow snapshot
+
+    public func systemFlowSnapshot() async -> SystemFlowSnapshot? {
+        // 録音中はライブカウンタを反映、停止後は最後のセッションのスナップショットを返す。
+        if let active {
+            return SystemFlowSnapshot(
+                callCount: active.tap.ioProcCallCount,
+                bytesReceived: active.tap.receivedBytesTotal,
+                nonZeroBufferCount: active.tap.nonZeroBufferCount,
+                droppedPushCount: active.tap.droppedPushCount
+            )
+        }
+        return lastSystemFlow
+    }
+
+    // MARK: - Default output device (logging helper)
+
+    /// `kAudioHardwarePropertyDefaultOutputDevice` から既定出力デバイス名を取得する。
+    /// 取得失敗時は `nil` を返す。
+    ///
+    /// 起動時ログに含めることで、ユーザーから「録音が無音」と報告された際に
+    /// AirPods など Bluetooth 出力に切り替わっていないかを後追いで確認できる。
+    nonisolated static func currentDefaultOutputDeviceName() -> String? {
+        var devID = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &devID
+        )
+        guard status == noErr, devID != kAudioObjectUnknown else { return nil }
+        var nameAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var nameRef: Unmanaged<CFString>?
+        var nameSize = UInt32(MemoryLayout<CFString?>.size)
+        let nstatus = withUnsafeMutablePointer(to: &nameRef) { ptr in
+            AudioObjectGetPropertyData(devID, &nameAddr, 0, nil, &nameSize, ptr)
+        }
+        guard nstatus == noErr, let nameRef else { return nil }
+        return nameRef.takeRetainedValue() as String
+    }
+
+    /// AVAudioFormat を 1 行表現にする (start ログ用)。
+    nonisolated static func describeFormat(_ format: AVAudioFormat) -> String {
+        let sr = Int(format.sampleRate)
+        let ch = format.channelCount
+        let common: String
+        switch format.commonFormat {
+        case .pcmFormatFloat32: common = "f32"
+        case .pcmFormatFloat64: common = "f64"
+        case .pcmFormatInt16: common = "i16"
+        case .pcmFormatInt32: common = "i32"
+        case .otherFormat: common = "other"
+        @unknown default: common = "?"
+        }
+        let interleaved = format.isInterleaved ? "i" : "p"
+        return "\(sr)Hz/\(ch)ch/\(common)/\(interleaved)"
     }
 
     // MARK: - Consumer
@@ -893,6 +989,8 @@ final class WriterSink: @unchecked Sendable {
     private var paused: Bool = false
     private var closed: Bool = false
     private var writeFailureCount: Int = 0
+    /// 書き込み済み (writer.write 成功) の累積バイト数。stop ログ等で使う観測値。
+    private var writeBytesTotal: Int = 0
     private let accumulator: LevelAccumulator
     /// Live ASR feed の continuation。`nil` なら fan-out しない (post-stop transcribe のみ)。
     /// finish() は close() で呼ばれる。
@@ -913,6 +1011,12 @@ final class WriterSink: @unchecked Sendable {
     var failureCount: Int {
         lock.lock(); defer { lock.unlock() }
         return writeFailureCount
+    }
+
+    /// 累積書き込みバイト数 (write 成功時のみ加算)。stop ログで mic/system の出力量を比較するのに使う。
+    var bytesWritten: Int {
+        lock.lock(); defer { lock.unlock() }
+        return writeBytesTotal
     }
 
     /// 失敗カウンタをリセットする (録音停止時に呼ぶ)。
@@ -950,6 +1054,14 @@ final class WriterSink: @unchecked Sendable {
         guard shouldWrite, let w else { return }
         do {
             try w.write(buffer)
+            // 書き込み成功 → バイト数を加算 (frameLength * bytesPerFrame)
+            let bpf = Int(buffer.format.streamDescription.pointee.mBytesPerFrame)
+            let frames = Int(buffer.frameLength)
+            if bpf > 0 && frames > 0 {
+                lock.lock()
+                writeBytesTotal += bpf * frames
+                lock.unlock()
+            }
         } catch {
             // ストリームは継続させる (途中で潰さない) が、サイレントフェイルを避けるため
             // 失敗回数を計上し、os.log にも 1 件ごとに記録する。

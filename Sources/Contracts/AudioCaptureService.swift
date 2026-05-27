@@ -61,6 +61,41 @@ public protocol AudioCaptureService: Sendable {
     /// - 録音停止後も `Recording` 確定までに残りの isFinal が遅延して届く可能性あり。
     /// - 上位 (ViewModel) は購読しっぱなしで使う想定。
     var liveTranscripts: AsyncStream<TranscriptSegment> { get }
+
+    /// SystemAudioTap の現在の flow カウンタを返す。
+    ///
+    /// ## セマンティクス
+    /// - 録音中は IOProc のライブカウンタを反映する。
+    /// - 録音停止後は **最後のセッションのスナップショット** を保持し返す（次の `start()` までクリアしない）。
+    /// - SystemAudioTap が存在しない実装（テスト用 fake 等）では `nil` を返してよい。
+    func systemFlowSnapshot() async -> SystemFlowSnapshot?
+}
+
+/// SystemAudioTap (Core Audio process tap) の IOProc カウンタのスナップショット。
+///
+/// 「IOProc は呼ばれているのに信号がゼロ」のような silent denial を観測可能にし、
+/// 診断 UI で原因切り分けに使う。
+public struct SystemFlowSnapshot: Sendable, Equatable {
+    /// IOProc が呼び出された累積回数。
+    public let callCount: Int
+    /// IOProc が ring に push した累積バイト数。
+    public let bytesReceived: Int
+    /// 中身が全ゼロでなかった (有意な信号を含む) バッファ数。
+    public let nonZeroBufferCount: Int
+    /// ring buffer が満杯で push をドロップした累積回数。
+    public let droppedPushCount: Int
+
+    public init(
+        callCount: Int,
+        bytesReceived: Int,
+        nonZeroBufferCount: Int,
+        droppedPushCount: Int
+    ) {
+        self.callCount = callCount
+        self.bytesReceived = bytesReceived
+        self.nonZeroBufferCount = nonZeroBufferCount
+        self.droppedPushCount = droppedPushCount
+    }
 }
 
 public enum CaptureState: Sendable, Hashable {

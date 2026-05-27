@@ -76,6 +76,19 @@ public actor FakeAudioCaptureService: AudioCaptureService {
 
     public nonisolated var liveTranscripts: AsyncStream<TranscriptSegment> { liveTranscriptStream }
 
+    /// Fake: SystemAudioTap が無いので常に nil を返す。
+    /// テストで具体的な値を返したい場合は `injectedSystemFlow` を設定する。
+    private var injectedSystemFlow: SystemFlowSnapshot?
+
+    /// テスト用: `systemFlowSnapshot()` が返す値を差し替える。nil で「未対応 / 取得不能」を表現。
+    public func setSystemFlowSnapshot(_ snapshot: SystemFlowSnapshot?) {
+        injectedSystemFlow = snapshot
+    }
+
+    public func systemFlowSnapshot() async -> SystemFlowSnapshot? {
+        injectedSystemFlow
+    }
+
     private func transition(to next: CaptureState) {
         guard next != _currentState else { return }
         _currentState = next

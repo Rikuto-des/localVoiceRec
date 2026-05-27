@@ -1,5 +1,6 @@
 import SwiftUI
 import Contracts
+import OSLog
 #if DEBUG
 import ContractsTestSupport
 #endif
@@ -22,6 +23,20 @@ struct DiagnosticsPanel: View {
     @Bindable var viewModel: AppViewModel
     @State private var isExpanded: Bool = false
     @State private var isRefreshing: Bool = false
+    /// 「診断ログをコピー」ボタンの状態。
+    @State private var copyState: CopyState = .idle
+    @State private var copyAlert: CopyAlert?
+
+    private enum CopyState: Equatable {
+        case idle
+        case copying
+        case success
+    }
+
+    private struct CopyAlert: Identifiable {
+        let id = UUID()
+        let message: String
+    }
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -102,6 +117,11 @@ struct DiagnosticsPanel: View {
                 )
             }
 
+            if let flow = viewModel.diagnostics.systemFlow {
+                Divider()
+                systemFlowSection(flow)
+            }
+
             if let recording = viewModel.selectedRecording {
                 Divider()
                 section(title: "選択中の録音ファイル") {
@@ -111,6 +131,19 @@ struct DiagnosticsPanel: View {
             }
 
             HStack {
+                Button {
+                    Task { await copyDiagnosticsLog() }
+                } label: {
+                    if copyState == .success {
+                        Label("✓ コピーしました", systemImage: "checkmark.circle.fill")
+                    } else {
+                        Label("診断ログをコピー", systemImage: "doc.on.clipboard")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(copyState == .copying)
+                .help("直近 5 分の os.log エントリをクリップボードへ")
                 Spacer()
                 Button {
                     Task { await refresh() }
@@ -123,6 +156,36 @@ struct DiagnosticsPanel: View {
                 .help("診断情報を取得し直します")
             }
             .padding(.top, Theme.Spacing.xs)
+        }
+        .alert(item: $copyAlert) { alert in
+            Alert(title: Text("診断ログのコピー"), message: Text(alert.message), dismissButton: .default(Text("OK")))
+        }
+    }
+
+    // MARK: - System Flow
+
+    /// C2: SystemAudioTap IOProc カウンタを表示するセクション。
+    /// `callCount > 0 && nonZeroBufferCount == 0` のとき、TCC silent denial を疑う赤バナーを出す。
+    @ViewBuilder
+    private func systemFlowSection(_ flow: SystemFlowSnapshot) -> some View {
+        let suspiciousSilentDenial = flow.callCount > 0 && flow.nonZeroBufferCount == 0
+        section(title: "システム音声 flow") {
+            row(label: "IOProc 呼び出し", value: "\(flow.callCount)", isWarning: false)
+            row(label: "受信バイト", value: "\(flow.bytesReceived)", isWarning: flow.callCount > 0 && flow.bytesReceived == 0)
+            row(label: "非ゼロバッファ", value: "\(flow.nonZeroBufferCount)", isWarning: suspiciousSilentDenial)
+            row(label: "ドロップ", value: "\(flow.droppedPushCount)", isWarning: flow.droppedPushCount > 0)
+            if suspiciousSilentDenial {
+                Label {
+                    Text("⚠️ IOProc は呼ばれていますが信号がゼロです。画面収録権限を確認してください。")
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                        .foregroundStyle(.red)
+                }
+                .font(.caption)
+                .padding(Theme.Spacing.sm)
+                .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+            }
         }
     }
 
@@ -341,6 +404,80 @@ struct DiagnosticsPanel: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    /// C4: 直近 5 分の os.log エントリを `subsystem == com.example.localVoiceRec` で取得し、
+    /// テキスト化してクリップボードへコピーする。
+    ///
+    /// ## OSLogStore の制約
+    /// - macOS 12+ が必要。
+    /// - 非サンドボックスのアプリは `.local` ストアを開ける。サンドボックス下では
+    ///   `OSLogEntryLog.subsystem` フィルタが効くが、他プロセスのログにはアクセス不可。
+    /// - 取得は同期的でログ件数によっては時間がかかるため、`Task.detached` でオフメイン実行。
+    /// - 件数 / バイト数の上限を設けてアプリが固まらないようにする (max 500 件 or 100KB)。
+    private func copyDiagnosticsLog() async {
+        copyState = .copying
+        defer {
+            if copyState == .copying { copyState = .idle }
+        }
+        let result: Result<String, Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                let store = try OSLogStore.local()
+                // 直近 5 分のエントリを取得。`position(date:)` は内部で適切な offset を選ぶ。
+                let fiveMinAgo = Date().addingTimeInterval(-300)
+                let position = store.position(date: fiveMinAgo)
+                let predicate = NSPredicate(format: "subsystem == %@", "com.example.localVoiceRec")
+                let entries = try store.getEntries(at: position, matching: predicate)
+
+                var lines: [String] = []
+                var totalBytes = 0
+                let maxEntries = 500
+                let maxBytes = 100_000
+                let dateFmt = ISO8601DateFormatter()
+                dateFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+                for case let entry as OSLogEntryLog in entries {
+                    let level: String
+                    switch entry.level {
+                    case .debug: level = "debug"
+                    case .info: level = "info"
+                    case .notice: level = "notice"
+                    case .error: level = "error"
+                    case .fault: level = "fault"
+                    case .undefined: level = "undefined"
+                    @unknown default: level = "?"
+                    }
+                    let line = "[\(dateFmt.string(from: entry.date))] [\(level)] [\(entry.category)] \(entry.composedMessage)"
+                    let byteEstimate = line.utf8.count + 1
+                    if lines.count >= maxEntries || totalBytes + byteEstimate > maxBytes {
+                        lines.append("--- truncated (limit reached) ---")
+                        break
+                    }
+                    lines.append(line)
+                    totalBytes += byteEstimate
+                }
+                if lines.isEmpty {
+                    lines.append("(no log entries in last 5 minutes for subsystem com.example.localVoiceRec)")
+                }
+                return .success(lines.joined(separator: "\n"))
+            } catch {
+                return .failure(error)
+            }
+        }.value
+
+        switch result {
+        case .success(let text):
+            copyToClipboard(text)
+            copyState = .success
+            // 1.6 秒後に idle に戻す
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                if copyState == .success { copyState = .idle }
+            }
+        case .failure(let error):
+            copyState = .idle
+            copyAlert = CopyAlert(message: "ログ取得に失敗しました: \(error.localizedDescription)")
+        }
     }
 }
 
