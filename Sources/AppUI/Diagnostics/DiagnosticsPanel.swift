@@ -52,6 +52,12 @@ struct DiagnosticsPanel: View {
                     value: stateLabel(viewModel.diagnostics.systemAudioAuthorization),
                     isWarning: viewModel.diagnostics.systemAudioAuthorization != .authorized
                 )
+                if viewModel.diagnostics.systemAudioAuthorization == .notDetermined {
+                    Text("システム音声は事前確認 API がないため、初回録音で実音が取れた時点で「許可済み」になります。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 // 未要求のときは権限プロンプトを出すボタンを表示
                 if viewModel.diagnostics.micAuthorization == .notDetermined ||

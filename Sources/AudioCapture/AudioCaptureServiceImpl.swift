@@ -94,8 +94,12 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
     public func authorizationStatus() async -> AudioAuthorizationStatus {
         let mic = Self.mapAVAuthStatus(AVCaptureDevice.authorizationStatus(for: .audio))
         // System Audio (Core Audio process tap) は事前 query API が無いため、
-        // 「初回 start で判明」の方針。安全側で `.notDetermined` を返す。
-        return AudioAuthorizationStatus(microphone: mic, systemAudio: .notDetermined)
+        // 過去に non-zero audio を取得できた実績 (`SystemAudioCaptureFlag`) を採用する。
+        // 実績ありなら `.authorized`、無ければ `.notDetermined` を返す。
+        // (実体験ベース。TCC で許可しているのに「未要求」表示になる UX バグの解消)
+        let systemState: AudioAuthorizationStatus.State =
+            SystemAudioCaptureFlag.everCaptured() ? .authorized : .notDetermined
+        return AudioAuthorizationStatus(microphone: mic, systemAudio: systemState)
     }
 
     @discardableResult
@@ -108,7 +112,10 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         }
         let mic: AudioAuthorizationStatus.State = micGranted ? .authorized : .denied
         // System Audio は初回 `tap.start()` で OS プロンプトが出る前提。ここでは判定不能。
-        return AudioAuthorizationStatus(microphone: mic, systemAudio: .notDetermined)
+        // ただし過去実績があれば `.authorized` を返す（許可済みの再表示用）。
+        let systemState: AudioAuthorizationStatus.State =
+            SystemAudioCaptureFlag.everCaptured() ? .authorized : .notDetermined
+        return AudioAuthorizationStatus(microphone: mic, systemAudio: systemState)
     }
 
     private static func mapAVAuthStatus(_ s: AVAuthorizationStatus) -> AudioAuthorizationStatus.State {
@@ -224,6 +231,11 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
                 let (mr, mp) = micAccumulator.snapshot()
                 let (sr, sp) = systemAccumulator.snapshot()
                 let elapsed = Date().timeIntervalSince(startedAtCopy)
+                // システム音声が無音閾値を超えた = 実際にキャプチャできている。
+                // この事実を永続化して以降は `.authorized` 扱いにする (UX バグ修正)。
+                if sp >= AudioLevelSnapshot.silenceThreshold {
+                    SystemAudioCaptureFlag.markCaptured()
+                }
                 levelCont.yield(AudioLevelSnapshot(
                     elapsedSec: elapsed,
                     micRMS: mr,
@@ -387,6 +399,43 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd HH:mm"
         return "Meeting \(df.string(from: date))"
+    }
+}
+
+// MARK: - SystemAudioCaptureFlag
+
+/// システム音声を「過去に実際に取得できた」記録を `UserDefaults` で永続化する。
+///
+/// macOS の Core Audio process tap には事前 query API が無いため、
+/// `authorizationStatus()` は本来 `.notDetermined` しか返せない。
+/// しかしユーザーは TCC で許可しているケースが多く、実体験と乖離する。
+///
+/// 解決策: **一度でも non-zero (>= silenceThreshold) なシステム音声が観測できたら**
+/// その bundle (= UserDefaults スコープ) 内で `.authorized` 扱いにする。
+/// 再インストールや別 bundle id では再度 `.notDetermined` に戻る (TCC と整合)。
+///
+/// 寿命: bundle 単位の UserDefaults。ユーザーが「設定を初期化」したい場合は
+/// UserDefaults をリセットする他ない (UI からの reset は今回は提供しない)。
+enum SystemAudioCaptureFlag {
+    /// UserDefaults キー。namespace 衝突を避けるため逆ドメイン記法。
+    static let key = "com.example.localVoiceRec.systemAudio.everCaptured"
+
+    /// テスト用に override 可能な store。デフォルトは `.standard`。
+    nonisolated(unsafe) static var store: UserDefaults = .standard
+
+    static func everCaptured() -> Bool {
+        store.bool(forKey: key)
+    }
+
+    static func markCaptured() {
+        // 既に true ならスキップ (write を減らす)
+        if store.bool(forKey: key) { return }
+        store.set(true, forKey: key)
+    }
+
+    /// テスト用のリセット。
+    static func reset() {
+        store.removeObject(forKey: key)
     }
 }
 
