@@ -24,7 +24,7 @@
   <div class="wrap">
     <span class="topstripe-left">localVoiceRec</span>
     <span class="topstripe-mid">macOS · オンデバイス · 社内向け</span>
-    <span class="topstripe-right">v0.1.8 · 2026 · Issue 09</span>
+    <span class="topstripe-right">v0.1.9 · 2026 · Issue 10</span>
   </div>
 </header>
 
@@ -57,34 +57,28 @@
       </div>
 
       <aside class="hero-right">
-        <figure class="window">
-          <div class="window-bar">
-            <span class="dot dot-r"></span>
-            <span class="dot dot-y"></span>
-            <span class="dot dot-g"></span>
-            <span class="window-title">menu bar</span>
-          </div>
-          <div class="window-body">
-            <div class="menubar-mock">
-              <span class="menubar-icon">●</span>
-              <div class="menubar-card">
-                <div class="menubar-row">
-                  <strong>localVoiceRec</strong>
-                  <span class="status status-recording">録音中</span>
-                </div>
-                <p class="menubar-meta">開始 14:32:08 · 経過 12:34</p>
-                <div class="menubar-buttons">
-                  <button class="ghost">一時停止</button>
-                  <button class="primary">停止</button>
-                </div>
-                <hr />
-                <p class="menubar-meta dim">録音は外部に一切送信されません</p>
-              </div>
-            </div>
-          </div>
+        <figure class="hero-shot">
+          <img src="screenshots/menubar.png" alt="メニューバーから localVoiceRec を開いた様子。録音開始 / 録音一覧を開く / 終了の 3 つのボタンが見える。" />
+          <figcaption>メニューバーから一手で録音開始。</figcaption>
         </figure>
       </aside>
     </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────
+     App screenshot — detail window
+     ───────────────────────────────────────────── -->
+<section class="section section-shot">
+  <div class="wrap">
+    <figure class="app-shot">
+      <img src="screenshots/detail.png" alt="録音一覧と詳細ウィンドウ。左側に複数の Meeting エントリ（完了済みアイコン付き）、右側に Mic / System の波形と話者ごとの吹き出し（自分の声は青の右寄せ、相手の声は左寄せ）が表示されている。" />
+      <figcaption>
+        左に録音一覧、右にチャネル別波形と話者バブル。
+        Slack に貼り付けやすい全文プレーンテキストや、Foundation Models が生成した
+        構造化要約まで、すべて 1 ウィンドウで完結します。
+      </figcaption>
+    </figure>
   </div>
 </section>
 
@@ -339,10 +333,10 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 
     <div class="download-card">
       <div class="download-left">
-        <p class="download-version">version <strong>0.1.8</strong></p>
-        <p class="download-build">released 2026-05-27 · build 9</p>
-        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.8.dmg" download>
-          <span class="btn-label">localVoiceRec-0.1.8.dmg</span>
+        <p class="download-version">version <strong>0.1.9</strong></p>
+        <p class="download-build">released 2026-05-27 · build 10</p>
+        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.9.dmg" download>
+          <span class="btn-label">localVoiceRec-0.1.9.dmg</span>
           <span class="btn-meta">.dmg · 932 KB</span>
         </a>
         <p class="download-note">
@@ -350,10 +344,11 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
           初回起動で Gatekeeper 警告は出ません。SHA-256 を照合の上ご利用ください。
         </p>
         <p class="download-note" style="margin-top:1rem; padding-top:1rem; border-top:1px solid var(--rule);">
-          <strong>v0.1.8 の変更点</strong><br />
-          ・<strong>専用 App アイコン + DMG マウント画面</strong>：ドック / 一覧で識別しやすい、Editorial トーンの新ロゴ<br />
-          ・<strong>HIG 準拠の UI ブラッシュアップ</strong>：タイポ階層、セマンティックカラー、アクセシビリティ（VoiceOver / Reduce Motion）対応<br />
-          ・<strong>「録音一覧を開く」が確実に最前面</strong>に来るよう修正（NSApp.activate + makeKeyAndOrderFront）<br />
+          <strong>v0.1.9 の変更点</strong><br />
+          ・<strong>波形更新停止バグの修正</strong>：メニューを閉じて他アプリに移ると波形が止まる問題を解消（ViewModel 側で常時購読）<br />
+          ・専用 App アイコン + DMG マウント画面（v0.1.8 で導入、継続）<br />
+          ・HIG 準拠の UI ブラッシュアップ（タイポ階層、セマンティックカラー、Reduce Motion / VoiceOver 対応）<br />
+          ・「録音一覧を開く」が確実に最前面に来る挙動<br />
           ・全文テキストの折りたたみ表示・全文コピー（既存 v0.1.7 から維持）<br />
           ・システム音声「未要求」誤表示の修正（既存 v0.1.7 から維持）<br />
           ・初回起動時にマイク権限プロンプトを早出し<br />
@@ -374,11 +369,11 @@ tccutil reset SystemAudioRecording com.example.localVoiceRec</code></pre>
 
       <div class="download-right">
         <p class="download-label">SHA-256</p>
-        <pre class="hash"><code id="sha">a6ce560fe26f0dd5eb3922fd96fcf3104597ccd7e93953c0b7d8445146592885</code></pre>
+        <pre class="hash"><code id="sha">faa6caabda93e720df2bab0ba3f533c19317c65369a48969b3ee622f4275d18c</code></pre>
         <button id="copy-sha" class="ghost btn-copy">SHA をコピー</button>
 
         <p class="download-label" style="margin-top:1.5rem">検証コマンド</p>
-        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.8.dmg</code></pre>
+        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.9.dmg</code></pre>
         <p class="download-label" style="margin-top:1.5rem">公証の確認</p>
         <pre class="hash"><code>spctl --assess --type execute -vv localVoiceRec.app</code></pre>
         <p class="download-fineprint">

@@ -17,14 +17,16 @@ public struct MainScene: Scene {
         summary: any SummaryService
     ) {
         self.captureService = capture
-        _viewModel = State(
-            initialValue: AppViewModel(
-                capture: capture,
-                repository: repository,
-                transcription: transcription,
-                summary: summary
-            )
+        let vm = AppViewModel(
+            capture: capture,
+            repository: repository,
+            transcription: transcription,
+            summary: summary
         )
+        // ViewModel が永続的に audioLevels を購読開始。
+        // メニューバーポップアップが閉じても更新が止まらないため。
+        vm.startObservingAudioLevels()
+        _viewModel = State(initialValue: vm)
     }
 
     public var body: some Scene {

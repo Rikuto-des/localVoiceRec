@@ -24,7 +24,7 @@ struct MenuBarContentView: View {
             Divider()
             statusDescription
             if viewModel.isActivelyRecording || viewModel.isPaused {
-                LiveWaveformView(service: captureService)
+                LiveWaveformView(viewModel: viewModel)
                     .padding(.vertical, Theme.Spacing.xs)
                     .transition(reduceMotion ? .identity : .opacity)
             }

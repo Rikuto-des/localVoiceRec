@@ -3,8 +3,9 @@ import Contracts
 
 /// 録音中のリアルタイム波形ビュー。
 ///
-/// `AudioCaptureService.liveAudioLevels` を購読して直近 `windowSeconds` 秒の
-/// RMS / Peak をローリングバッファに溜め、Canvas で mic / system を縦に並べて描画する。
+/// `AppViewModel.audioLevels` rolling buffer を読んで描画する。**View 側は購読しない**
+/// — ViewModel が永続的に購読しているので、メニューバーポップアップを閉じて開き直しても
+/// 履歴がリセットされない。
 ///
 /// ## デザイン意図
 /// - **mic は accentColor / system はオレンジ** で色分けし、
@@ -12,13 +13,17 @@ import Contracts
 /// - 上半分に mic、下半分に system を描画（左 → 右に時間が流れる）
 /// - 数値表示は dBFS（小数 1 桁）+ 「無音」バッジで明示
 struct LiveWaveformView: View {
-    let service: any AudioCaptureService
+    @Bindable var viewModel: AppViewModel
 
     /// 表示する時間窓（秒）。
     private let windowSeconds: Double = 4.0
 
-    @State private var history: [AudioLevelSnapshot] = []
-    @State private var subscriptionTask: Task<Void, Never>?
+    /// テスト用に外部から差し込めるオーバーライド buffer（通常は nil で `viewModel.audioLevels` を見る）。
+    var historyOverride: [AudioLevelSnapshot]?
+
+    private var history: [AudioLevelSnapshot] {
+        historyOverride ?? viewModel.audioLevels
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -51,31 +56,6 @@ struct LiveWaveformView: View {
                 isSilent: history.last?.isSystemSilent ?? true
             )
         }
-        .task {
-            subscriptionTask?.cancel()
-            let task = Task { @MainActor in
-                for await snap in service.liveAudioLevels {
-                    if Task.isCancelled { break }
-                    append(snap)
-                }
-            }
-            subscriptionTask = task
-        }
-        .onDisappear {
-            subscriptionTask?.cancel()
-            subscriptionTask = nil
-        }
-    }
-
-    /// テスト用に外部から snapshot を流し込めるフック。
-    internal func appendForTest(_ snap: AudioLevelSnapshot) {
-        append(snap)
-    }
-
-    private func append(_ snap: AudioLevelSnapshot) {
-        history.append(snap)
-        let cutoff = snap.elapsedSec - windowSeconds
-        history.removeAll { $0.elapsedSec < cutoff }
     }
 
     // MARK: - Header
@@ -231,13 +211,18 @@ private extension Double {
 }
 
 #Preview("Live waveform (Mock)") {
-    LiveWaveformView(service: FakeAudioCaptureService())
+    let capture = FakeAudioCaptureService()
+    let vm = AppViewModel(
+        capture: capture,
+        repository: InMemoryRecordingRepository(),
+        transcription: FakeTranscriptionService(),
+        summary: FakeSummaryService()
+    )
+    return LiveWaveformView(viewModel: vm)
         .padding()
         .frame(width: 360)
         .task {
-            // FakeAudioCaptureService は start を呼ばないと emit しないので、ここで起動
-            let svc = FakeAudioCaptureService()
-            _ = try? await svc.start(in: URL(fileURLWithPath: NSTemporaryDirectory()), title: "preview")
-            _ = svc
+            vm.startObservingAudioLevels()
+            _ = try? await capture.start(in: URL(fileURLWithPath: NSTemporaryDirectory()), title: "preview")
         }
 }

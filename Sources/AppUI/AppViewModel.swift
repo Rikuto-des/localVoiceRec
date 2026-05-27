@@ -67,11 +67,21 @@ public final class AppViewModel {
 
     /// `subscribeToCaptureState()` で開始した監視タスク。
     private var stateSubscriptionTask: Task<Void, Never>?
+    /// `subscribeToAudioLevels()` で開始した監視タスク。
+    private var audioLevelsTask: Task<Void, Never>?
     /// 進行中の自動パイプライン (録音 ID → Task)
     private var pipelineTasks: [UUID: Task<Void, Never>] = [:]
     /// `select` 経由で 1 回だけ自動 transcribe を試行済みの録音 ID。
     /// 手動「文字起こしを実行」が押されたらクリアして再試行を許可する。
     private var autoTranscribeAttempted: Set<UUID> = []
+
+    /// 録音中のレベルスナップショットの rolling buffer。
+    /// **メニューバーポップアップを閉じても継続して更新される** ように、
+    /// ViewModel 自身が `service.liveAudioLevels` を購読し、ここに保持する。
+    /// View 側は `audioLevels` を読むだけ（subscribe しない）。
+    public private(set) var audioLevels: [AudioLevelSnapshot] = []
+    /// rolling buffer の保持秒数（描画用 window と整合）
+    private let audioLevelsWindowSec: Double = 4.0
     /// 文字起こしが「無音/未検出」で終わった録音 ID。
     /// 失敗 (lastError) とは別の状態として UI で区別する。
     public private(set) var emptyTranscriptIDs: Set<UUID> = []
@@ -114,6 +124,27 @@ public final class AppViewModel {
             }
         }
         stateSubscriptionTask = task
+    }
+
+    /// `capture.liveAudioLevels` を **ViewModel が永続的に購読** し、
+    /// 直近 window 秒の rolling buffer を `audioLevels` に保持する。
+    ///
+    /// View 側はこの buffer を読むだけなので、メニューバーポップアップを閉じても
+    /// 購読が継続し、再オープン時に空配列にならない。
+    /// 通常は LocalVoiceRecApp.init から 1 回だけ呼ぶ運用。
+    public func startObservingAudioLevels() {
+        audioLevelsTask?.cancel()
+        let stream = capture.liveAudioLevels
+        let window = audioLevelsWindowSec
+        audioLevelsTask = Task { @MainActor [weak self] in
+            for await snap in stream {
+                guard let self else { break }
+                if Task.isCancelled { break }
+                self.audioLevels.append(snap)
+                let cutoff = snap.elapsedSec - window
+                self.audioLevels.removeAll { $0.elapsedSec < cutoff }
+            }
+        }
     }
 
     // MARK: - Intents: Permissions

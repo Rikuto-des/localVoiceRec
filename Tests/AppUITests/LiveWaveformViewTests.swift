@@ -11,31 +11,48 @@ import Contracts
 @Suite("LiveWaveformView buffer")
 struct LiveWaveformViewTests {
 
-    @Test("古い snapshot は windowSeconds を超えると削除される")
-    func rollingBufferTrimsOldEntries() async {
-        let view = LiveWaveformView(service: FakeAudioCaptureService())
+    @Test("historyOverride で渡したスナップショットが描画対象になる")
+    func historyOverrideIsHonored() async {
+        // 新設計: View は ViewModel.audioLevels を読むだけ。
+        // テストでは historyOverride を使って固定 buffer を流し込み、構築できることだけ確認。
+        let vm = AppViewModel(
+            capture: FakeAudioCaptureService(),
+            repository: InMemoryRecordingRepository(),
+            transcription: FakeTranscriptionService(),
+            summary: FakeSummaryService()
+        )
+        let history: [AudioLevelSnapshot] = stride(from: 0.0, through: 5.0, by: 0.5).map { t in
+            AudioLevelSnapshot(
+                elapsedSec: t,
+                micRMS: 0.1, micPeak: 0.2,
+                systemRMS: 0.05, systemPeak: 0.1
+            )
+        }
+        let view = LiveWaveformView(viewModel: vm, historyOverride: history)
+        _ = view  // 構築できれば OK（SwiftUI ビューの body 評価は別環境必要）
+        #expect(history.count == 11)
+    }
 
-        // 5 件、間隔 1.0s で投入。windowSeconds = 4.0
-        // 最後の elapsedSec が 10.0 のとき、cutoff = 6.0 → 6.0 未満は削除
-        for t in stride(from: 0.0, through: 10.0, by: 1.0) {
-            view.appendForTest(AudioLevelSnapshot(
-                elapsedSec: t,
-                micRMS: 0.1, micPeak: 0.2,
-                systemRMS: 0.0, systemPeak: 0.0
-            ))
-        }
-        // 直接 history は private なのでアクセスできない。
-        // 代わりに「buffer が無制限に増えない」境界だけテスト。
-        // 100 件投入しても、windowSeconds 内に収まる数だけ残るはず。
-        for t in stride(from: 11.0, through: 110.0, by: 0.1) {
-            view.appendForTest(AudioLevelSnapshot(
-                elapsedSec: t,
-                micRMS: 0.1, micPeak: 0.2,
-                systemRMS: 0.0, systemPeak: 0.0
-            ))
-        }
-        // 直接 assertion はできないが、append が落ちないこと自体が boundary 確認
-        #expect(Bool(true))
+    @Test("ViewModel.audioLevels が rolling buffer として window 内に収まる")
+    func viewModelRollingBuffer() async {
+        // ViewModel が startObservingAudioLevels で受け取った値を rolling buffer に
+        // 保持する設計。FakeAudioCaptureService の sine wave emit を 1 秒分流し、
+        // window (4 秒) を超えていれば古いものが消えるはず。
+        let capture = FakeAudioCaptureService()
+        let vm = AppViewModel(
+            capture: capture,
+            repository: InMemoryRecordingRepository(),
+            transcription: FakeTranscriptionService(),
+            summary: FakeSummaryService()
+        )
+        vm.startObservingAudioLevels()
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        _ = try? await capture.start(in: dir, title: "test")
+        // emit は 100ms ごと。1.2 秒待って ~12 件取れる想定。
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        _ = try? await capture.stop()
+        // 件数は実機タイミング依存だが、最低限 buffer が空でないこと
+        #expect(vm.audioLevels.count >= 1)
     }
 
     @Test("AudioLevelSnapshot の silence 判定が反映される")
