@@ -5,17 +5,6 @@ import AppKit
 extension RecordingDetailView {
     // MARK: - Transcript
 
-    /// この詳細画面で表示中の録音が「現在録音中の録音」と一致するか。
-    /// 一致するときは live transcripts セクションを Final の上に出す (P4.5)。
-    var isShowingActiveRecording: Bool {
-        guard viewModel.isActivelyRecording || viewModel.isPaused else { return false }
-        // capture session id と詳細画面の id を厳密に紐付ける手段は ViewModel に無いため、
-        // 「録音中であり、selectedRecording がまだ DB に永続化される前の暫定 ID で
-        // ない」状況のみ true にする緩い実装。誤検知しても見栄えに影響しないように
-        // live セクションは「録音中バナー」として独立表示する。
-        return viewModel.selectedRecording != nil
-    }
-
     @ViewBuilder
     var transcriptSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -23,16 +12,6 @@ extension RecordingDetailView {
                 sectionHeader(title: "文字起こし", systemImage: "text.bubble")
                 Spacer()
                 transcribeControls
-            }
-
-            // 録音中バナー: live で届いた直近セグメントを上部に表示。
-            // 録音停止後はフェードして消える。
-            if isShowingActiveRecording {
-                LiveTranscriptStrip(
-                    segments: viewModel.liveTranscriptSegments,
-                    isRecording: viewModel.isActivelyRecording || viewModel.isPaused
-                )
-                .transition(reduceMotion ? .identity : .opacity.animation(.easeInOut(duration: 0.5)))
             }
 
             if viewModel.isTranscribingSelected && viewModel.segments.isEmpty {

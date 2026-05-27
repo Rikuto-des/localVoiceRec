@@ -31,9 +31,9 @@ struct LocalVoiceRecApp: App {
             repository = UnavailableRecordingRepository()
         }
         let transcription = TranscriptionKitModule.makeService()
-        // P4.5: AudioCapture に transcription を渡して live ASR を有効化。
-        // 録音中の PCM を fan-out して投機的に文字起こし → MenuBar / DetailView に逐次表示。
-        let capture = AudioCaptureModule.makeService(transcription: transcription)
+        // Live ASR (録音中ストリーミング文字起こし) は UI から撤去済み。
+        // `transcribeLive` API 自体は将来のために残してあるが、AudioCaptureService からは発火しない。
+        let capture = AudioCaptureModule.makeService()
         let summary = SummaryKitModule.makeService()
 
         self.capture = capture

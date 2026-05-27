@@ -31,13 +31,6 @@ struct MenuBarContentView: View {
                     .padding(.vertical, Theme.Spacing.xs)
                     .transition(reduceMotion ? .identity : .opacity)
             }
-            if shouldShowLiveTranscript {
-                LiveTranscriptStrip(
-                    segments: viewModel.liveTranscriptSegments,
-                    isRecording: viewModel.isActivelyRecording || viewModel.isPaused
-                )
-                .transition(reduceMotion ? .identity : .opacity.animation(.easeInOut(duration: 0.5)))
-            }
             controlButtons
             if let lastError = viewModel.lastError {
                 Label(lastError, systemImage: "exclamationmark.triangle.fill")
@@ -60,15 +53,6 @@ struct MenuBarContentView: View {
         .task {
             await viewModel.refreshList()
         }
-    }
-
-    // MARK: - Derived
-
-    /// 録音中、もしくは停止直後の grace period 中 (バッファに残りあり) は表示する。
-    private var shouldShowLiveTranscript: Bool {
-        if viewModel.isActivelyRecording || viewModel.isPaused { return true }
-        // 停止直後、segments がまだ残っていれば 0.5s フェード用に保持
-        return !viewModel.liveTranscriptSegments.isEmpty
     }
 
     // MARK: - Sections

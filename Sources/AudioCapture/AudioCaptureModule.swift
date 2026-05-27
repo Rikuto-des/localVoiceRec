@@ -3,11 +3,13 @@ import Contracts
 
 /// AudioCapture モジュールのエントリ。`AudioCaptureService` 実装のファクトリを提供する。
 public enum AudioCaptureModule {
-    /// P4.5: 録音中のライブ文字起こしを既定で有効化するためのコンパイル時定数。
+    /// Live ASR (録音中ストリーミング文字起こし) の既定値。
     ///
-    /// 一旦 false に倒したい場合 (開発ビルドで重さを比較したい等) はここを書き換える。
-    /// UI からの切替は提供しない (ユーザーが触れない方が事故が少ない)。
-    public static let liveTranscriptionEnabledByDefault: Bool = true
+    /// UI 撤去に合わせて既定で OFF。`transcribeLive` API 自体と
+    /// `AudioCaptureService.liveTranscripts` プロトコル定義は残してあるため、
+    /// 将来再導入したい場合は `makeService(transcription:enableLiveTranscription:)`
+    /// の第 2 引数で true を渡すか、ここを true に戻すだけで配線が復活する。
+    public static let liveTranscriptionEnabledByDefault: Bool = false
 
     /// 本番 `AudioCaptureService` を返す。actor インスタンスが新規生成される。
     ///
