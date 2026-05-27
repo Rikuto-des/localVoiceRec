@@ -145,6 +145,8 @@ public final class AppViewModel {
                 return "録音ファイルの書き込みに失敗しました。空き容量と書き込み権限を確認してください。"
             case .outputDirectoryUnavailable:
                 return "録音保存先フォルダにアクセスできません。アプリの保存先設定を確認してください。"
+            case .diskWriteFailure(let failureCount):
+                return "録音ファイルの書き込みエラーが \(failureCount) 回連続で発生したため録音を停止しました。ディスクの空き容量と書き込み権限を確認してください。"
             }
 
         case let transcriptionError as TranscriptionError:
