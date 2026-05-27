@@ -152,6 +152,13 @@ struct DiagnosticsPanel: View {
             }
             .buttonStyle(.borderless)
             .help("ファイルパスをコピー")
+            Button {
+                FinderReveal.reveal(url)
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .help("Finder で表示")
         }
     }
 

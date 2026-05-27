@@ -60,6 +60,12 @@ struct RecordingListView: View {
                         )
                             .tag(recording.id as Recording.ID?)
                             .contextMenu {
+                                Button {
+                                    FinderReveal.openRecordingFolder(for: recording)
+                                } label: {
+                                    Label("Finder で開く", systemImage: "folder")
+                                }
+                                Divider()
                                 Button(role: .destructive) {
                                     Task { await viewModel.deleteRecording(recording) }
                                 } label: {

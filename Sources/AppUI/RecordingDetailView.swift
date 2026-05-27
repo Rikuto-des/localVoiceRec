@@ -71,8 +71,18 @@ struct RecordingDetailView: View {
 
     private func header(recording: Recording) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(recording.title)
-                .font(.title2.bold())
+            HStack {
+                Text(recording.title)
+                    .font(.title2.bold())
+                Spacer()
+                Button {
+                    FinderReveal.openRecordingFolder(for: recording)
+                } label: {
+                    Label("Finder で開く", systemImage: "folder")
+                }
+                .controlSize(.small)
+                .help("録音ファイルが入っているフォルダを Finder で開く")
+            }
             HStack(spacing: Theme.Spacing.sm) {
                 Label(
                     AppFormatters.dateTime.string(from: recording.startedAt),
