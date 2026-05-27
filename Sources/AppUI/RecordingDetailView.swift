@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Contracts
 import ExportKit
+import AppKit
 
 /// 個別録音の詳細ビュー。
 ///
@@ -12,6 +13,10 @@ struct RecordingDetailView: View {
     @State private var regenerateHint: String = ""
     @State private var showHintField: Bool = false
     @State private var showTranscribeReconfirm: Bool = false
+
+    // ─── 全文テキスト関連 (S15) ───
+    @State private var isFullTextExpanded: Bool = false
+    @State private var fullTextCopyConfirmedAt: Date?
 
     // ─── Export 関連 ───
     @State private var showFormatChooser: Bool = false
@@ -139,6 +144,98 @@ struct RecordingDetailView: View {
                         }
                         .padding(.top, Theme.Spacing.xs)
                     }
+                    fullTextSection
+                }
+            }
+        }
+    }
+
+    // MARK: - Full text (S15: Slack 等への貼り付け用)
+
+    /// 折りたたみ式の「全文テキスト」セクション。
+    /// `[mm:ss] mic: 内容` 形式のプレーンテキストで、TextEditor 経由でコピーペースト可能。
+    private var fullTextSection: some View {
+        DisclosureGroup(isExpanded: $isFullTextExpanded) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack {
+                    Text("Slack や Notion に貼り付けやすい、タイムスタンプ付きプレーンテキストです。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if let at = fullTextCopyConfirmedAt,
+                       Date().timeIntervalSince(at) < 2.0 {
+                        Label("コピーしました", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                            .transition(.opacity)
+                    }
+                    Button {
+                        copyFullTextToPasteboard()
+                    } label: {
+                        Label("全文をコピー", systemImage: "doc.on.doc")
+                    }
+                    .controlSize(.small)
+                    .disabled(viewModel.segments.isEmpty)
+                    .help("全文をクリップボードへコピー")
+                }
+
+                TextEditor(text: .constant(fullTextString))
+                    .font(.system(size: 13, design: .monospaced))
+                    .lineSpacing(2)
+                    .frame(minHeight: 140, maxHeight: 320)
+                    .padding(Theme.Spacing.xs)
+                    .background(
+                        Color(nsColor: .textBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                            .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                    )
+                    .accessibilityLabel("全文テキスト")
+                    .accessibilityHint("選択してコピーできます")
+            }
+            .padding(.top, Theme.Spacing.sm)
+        } label: {
+            Label("全文テキスト（コピー用）", systemImage: "text.alignleft")
+                .font(.subheadline.bold())
+        }
+        .padding(.top, Theme.Spacing.sm)
+    }
+
+    /// `[mm:ss] mic: text` 形式の plain text を組み立てる。
+    /// segments が空の場合は説明文を返す（TextEditor の placeholder 代わり）。
+    private var fullTextString: String {
+        let sorted = viewModel.segments.sorted { $0.startSec < $1.startSec }
+        guard !sorted.isEmpty else {
+            return "（文字起こし結果がここに表示されます）"
+        }
+        var out = ""
+        for seg in sorted {
+            let ts = AppFormatters.timestamp(from: seg.startSec)
+            let speaker = seg.source == .mic ? "mic" : "system"
+            let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            out += "[\(ts)] \(speaker): \(text)\n"
+        }
+        return out
+    }
+
+    private func copyFullTextToPasteboard() {
+        let text = fullTextString
+        guard !text.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            fullTextCopyConfirmedAt = Date()
+        }
+        // 2 秒後にバッジを消す
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            withAnimation(.easeInOut(duration: 0.2)) {
+                // 自分以降に別のコピーが走っていなければ消す
+                if let at = fullTextCopyConfirmedAt, Date().timeIntervalSince(at) >= 2.0 {
+                    fullTextCopyConfirmedAt = nil
                 }
             }
         }

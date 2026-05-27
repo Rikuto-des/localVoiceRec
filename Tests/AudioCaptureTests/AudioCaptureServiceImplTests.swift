@@ -99,3 +99,67 @@ struct AudioCaptureServiceImplTests {
         #expect(state == .idle)
     }
 }
+
+// MARK: - SystemAudioCaptureFlag (S15)
+
+@Suite("SystemAudioCaptureFlag", .serialized)
+struct SystemAudioCaptureFlagTests {
+
+    /// 各テスト用の隔離 UserDefaults を作って store にセットする。
+    private func withIsolatedStore(_ body: () -> Void) {
+        let suite = "SystemAudioCaptureFlagTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let prior = SystemAudioCaptureFlag.store
+        SystemAudioCaptureFlag.store = defaults
+        defer {
+            SystemAudioCaptureFlag.store = prior
+            defaults.removePersistentDomain(forName: suite)
+        }
+        body()
+    }
+
+    @Test("初期状態は false")
+    func defaultIsFalse() {
+        withIsolatedStore {
+            #expect(SystemAudioCaptureFlag.everCaptured() == false)
+        }
+    }
+
+    @Test("markCaptured で true になる")
+    func markFlipsToTrue() {
+        withIsolatedStore {
+            SystemAudioCaptureFlag.markCaptured()
+            #expect(SystemAudioCaptureFlag.everCaptured() == true)
+        }
+    }
+
+    @Test("reset で false に戻る")
+    func resetReturnsToFalse() {
+        withIsolatedStore {
+            SystemAudioCaptureFlag.markCaptured()
+            SystemAudioCaptureFlag.reset()
+            #expect(SystemAudioCaptureFlag.everCaptured() == false)
+        }
+    }
+
+    @Test("authorizationStatus は everCaptured=true で systemAudio=.authorized を返す")
+    func authorizationReflectsFlag() async {
+        // 隔離 store を一時的に差し替え
+        let suite = "SystemAudioCaptureFlagTests.auth.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let prior = SystemAudioCaptureFlag.store
+        SystemAudioCaptureFlag.store = defaults
+        defer {
+            SystemAudioCaptureFlag.store = prior
+            defaults.removePersistentDomain(forName: suite)
+        }
+
+        let svc = AudioCaptureServiceImpl()
+        let before = await svc.authorizationStatus()
+        #expect(before.systemAudio == .notDetermined)
+
+        SystemAudioCaptureFlag.markCaptured()
+        let after = await svc.authorizationStatus()
+        #expect(after.systemAudio == .authorized)
+    }
+}
