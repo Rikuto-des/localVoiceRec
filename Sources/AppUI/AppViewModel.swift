@@ -68,6 +68,11 @@ public final class AppViewModel {
     private var stateSubscriptionTask: Task<Void, Never>?
     /// `subscribeToAudioLevels()` で開始した監視タスク。
     private var audioLevelsTask: Task<Void, Never>?
+    /// `startObservingLiveTranscripts()` で開始した監視タスク (P4.2)。
+    private var liveTranscriptsTask: Task<Void, Never>?
+    /// 録音中に live ASR から届いた isFinal セグメント。録音 ID 単位で蓄積。
+    /// UI 表示用フックはまだ未実装 (P4.5 以降で扱う想定)。
+    public private(set) var liveTranscriptSegments: [TranscriptSegment] = []
     /// 進行中の自動パイプライン (録音 ID → Task)
     private var pipelineTasks: [UUID: Task<Void, Never>] = [:]
     /// `select` 経由で 1 回だけ自動 transcribe を試行済みの録音 ID。
@@ -131,6 +136,23 @@ public final class AppViewModel {
     /// View 側はこの buffer を読むだけなので、メニューバーポップアップを閉じても
     /// 購読が継続し、再オープン時に空配列にならない。
     /// 通常は LocalVoiceRecApp.init から 1 回だけ呼ぶ運用。
+    /// `capture.liveTranscripts` を購読し、`liveTranscriptSegments` に蓄積する (P4.2)。
+    ///
+    /// 現状は内部バッファに保持するだけで UI 表示には繋いでいない。P4.5 で
+    /// 「録音中の文字起こしリアルタイム表示」を実装する際に View 層から読まれる予定。
+    /// 通常は LocalVoiceRecApp.init から 1 回だけ呼ぶ運用 (audio levels と同様)。
+    public func startObservingLiveTranscripts() {
+        liveTranscriptsTask?.cancel()
+        let stream = capture.liveTranscripts
+        liveTranscriptsTask = Task { @MainActor [weak self] in
+            for await seg in stream {
+                guard let self else { break }
+                if Task.isCancelled { break }
+                self.liveTranscriptSegments.append(seg)
+            }
+        }
+    }
+
     public func startObservingAudioLevels() {
         audioLevelsTask?.cancel()
         let stream = capture.liveAudioLevels

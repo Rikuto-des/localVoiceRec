@@ -1,6 +1,6 @@
 import Foundation
-import AVFAudio
-import AVFoundation
+@preconcurrency import AVFAudio
+@preconcurrency import AVFoundation
 import Contracts
 import AudioTapKit
 import os.log
@@ -47,6 +47,23 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     public nonisolated var liveAudioLevels: AsyncStream<AudioLevelSnapshot> { levelStream }
 
+    // MARK: - Live transcript stream (P4.2)
+
+    /// 録音中 fan-out で投機 ASR から流れてくる isFinal セグメント。
+    /// `transcription` を init 時に渡し、`liveTranscriptionEnabled == true` の場合のみ
+    /// 実値が yield される。それ以外は録音停止に合わせて空のまま終わる。
+    private let liveTranscriptContinuation: AsyncStream<TranscriptSegment>.Continuation
+    private nonisolated let liveTranscriptStream: AsyncStream<TranscriptSegment>
+
+    public nonisolated var liveTranscripts: AsyncStream<TranscriptSegment> { liveTranscriptStream }
+
+    /// Live ASR (録音中 fan-out → SpeechAnalyzer) 用の依存。nil なら live ASR は使わない。
+    private let liveTranscription: (any TranscriptionService)?
+    /// Live ASR を使うかどうか。`liveTranscription` が non-nil かつこのフラグが true のときに有効。
+    private let liveTranscriptionEnabled: Bool
+    /// Live ASR の locale。nil ならシステムデフォルト。
+    private let liveTranscriptionLocale: Locale?
+
     private var _currentState: CaptureState = .idle
     public var currentState: CaptureState { _currentState }
 
@@ -67,7 +84,30 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     // MARK: - Init
 
+    /// 既定 init: live ASR を使わない (post-stop transcribe を従来どおり使うクライアント向け)。
     public init() {
+        self.init(liveTranscription: nil, liveTranscriptionEnabled: false, liveTranscriptionLocale: nil)
+    }
+
+    /// Live ASR (P4.2) 対応 init。`liveTranscription` を渡すと録音中の fan-out で
+    /// 同時にストリーミング文字起こしが走り、結果は `liveTranscripts` AsyncStream に
+    /// 流れる。`liveTranscriptionEnabled = false` の場合は依存だけ受け取って何もしない
+    /// (後方互換のため existing call site から段階的に切り替え可能)。
+    public init(
+        liveTranscription: (any TranscriptionService)?,
+        liveTranscriptionEnabled: Bool,
+        liveTranscriptionLocale: Locale?
+    ) {
+        self.liveTranscription = liveTranscription
+        self.liveTranscriptionEnabled = liveTranscriptionEnabled && liveTranscription != nil
+        self.liveTranscriptionLocale = liveTranscriptionLocale
+
+        var liveCaptured: AsyncStream<TranscriptSegment>.Continuation!
+        self.liveTranscriptStream = AsyncStream<TranscriptSegment>(
+            bufferingPolicy: .unbounded
+        ) { liveCaptured = $0 }
+        self.liveTranscriptContinuation = liveCaptured
+
         var captured: AsyncStream<CaptureState>.Continuation!
         self.stateStream = AsyncStream<CaptureState>(
             bufferingPolicy: .bufferingNewest(1)
@@ -291,8 +331,77 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         // ── consumer Tasks (detached) と LevelAccumulator
         let micAccumulator = LevelAccumulator()
         let systemAccumulator = LevelAccumulator()
-        let micSink = WriterSink(writer: micWriter, accumulator: micAccumulator)
-        let systemSink = WriterSink(writer: systemWriter, accumulator: systemAccumulator)
+
+        // ── Live ASR fan-out (P4.1 + P4.2)
+        // `liveTranscription` が設定され、`liveTranscriptionEnabled == true` の場合、
+        // 録音中の PCM を 3 並列で (a) writer / (b) accumulator / (c) ASR feed に流す。
+        // ASR feed は WriterSink 内部から continuation.yield されるため、追加 Task は
+        // ASR 結果を outer liveTranscripts に転送する purpose のみ。
+        let micASRFeed: AsyncStream<AVAudioPCMBuffer>.Continuation?
+        let systemASRFeed: AsyncStream<AVAudioPCMBuffer>.Continuation?
+        let liveASRTasks: [Task<Void, Never>]
+        if liveTranscriptionEnabled, let transcription = liveTranscription {
+            var micCap: AsyncStream<AVAudioPCMBuffer>.Continuation!
+            let micFeedStream = AsyncStream<AVAudioPCMBuffer>(
+                bufferingPolicy: .bufferingNewest(64)
+            ) { micCap = $0 }
+            var sysCap: AsyncStream<AVAudioPCMBuffer>.Continuation!
+            let systemFeedStream = AsyncStream<AVAudioPCMBuffer>(
+                bufferingPolicy: .bufferingNewest(64)
+            ) { sysCap = $0 }
+            micASRFeed = micCap
+            systemASRFeed = sysCap
+
+            // sessionID を引数に渡して recordingID として使う (stop() で同じ id を Recording に乗せる)
+            let recordingID = sessionID
+            let liveCont = self.liveTranscriptContinuation
+            let locale = self.liveTranscriptionLocale
+            let micCaptureFormat = mic.captureFormat
+            let sysCaptureFormat = tap.captureFormat
+
+            let micResults = transcription.transcribeLive(
+                buffers: micFeedStream,
+                inputFormat: micCaptureFormat,
+                recordingID: recordingID,
+                source: .mic,
+                locale: locale
+            )
+            let systemResults = transcription.transcribeLive(
+                buffers: systemFeedStream,
+                inputFormat: sysCaptureFormat,
+                recordingID: recordingID,
+                source: .system,
+                locale: locale
+            )
+
+            let micForwardTask = Task.detached(priority: .userInitiated) {
+                do {
+                    for try await seg in micResults {
+                        liveCont.yield(seg)
+                    }
+                } catch {
+                    // live ASR の失敗は録音継続を妨げない (best-effort)。
+                    Self.logger.error("live ASR (mic) failed: \(String(describing: error))")
+                }
+            }
+            let systemForwardTask = Task.detached(priority: .userInitiated) {
+                do {
+                    for try await seg in systemResults {
+                        liveCont.yield(seg)
+                    }
+                } catch {
+                    Self.logger.error("live ASR (system) failed: \(String(describing: error))")
+                }
+            }
+            liveASRTasks = [micForwardTask, systemForwardTask]
+        } else {
+            micASRFeed = nil
+            systemASRFeed = nil
+            liveASRTasks = []
+        }
+
+        let micSink = WriterSink(writer: micWriter, accumulator: micAccumulator, liveASRFeed: micASRFeed)
+        let systemSink = WriterSink(writer: systemWriter, accumulator: systemAccumulator, liveASRFeed: systemASRFeed)
 
         let micTask = Task.detached(priority: .userInitiated) {
             await Self.consume(stream: micStream, sink: micSink)
@@ -380,7 +489,8 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             micTask: micTask,
             systemTask: systemTask,
             levelEmitTask: levelEmitTask,
-            watchdogTask: watchdogTask
+            watchdogTask: watchdogTask,
+            liveASRTasks: liveASRTasks
         )
         Self.logger.info("AudioCaptureServiceImpl.start: micFormat=\(String(describing: mic.captureFormat)) sysFormat=\(String(describing: tap.captureFormat))")
         transition(to: .recording(startedAt: now))
@@ -447,8 +557,30 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         _ = await active.watchdogTask.value
 
         // writer を明示 close (AVAudioFile は ARC で flush するが、シーケンスポイントとして残す)
+        // この close() 内で live ASR feed continuation も finish() され、
+        // transcribeLive 側で finalizeAndFinish が回って残りの isFinal が確定する。
         active.micSink.close()
         active.systemSink.close()
+
+        // Live ASR forwarding Task の完了待ち (transcribeLive が finish() を呼ぶまで)。
+        // best-effort: 何かしらの異常で stuck しても本筋 (Recording 返却) を止めないように
+        // 最大数秒のタイムアウトを設ける。
+        if !active.liveASRTasks.isEmpty {
+            await withTaskGroup(of: Void.self) { group in
+                for t in active.liveASRTasks {
+                    group.addTask {
+                        _ = await t.value
+                    }
+                }
+                // タイムアウト用 Task
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s
+                }
+                // 全 forward 完了 or タイムアウトのどちらか先に来た方で抜ける
+                _ = await group.next()
+                group.cancelAll()
+            }
+        }
 
         let endedAt = Date()
         let recording = Recording(
@@ -572,6 +704,8 @@ private struct ActiveSession {
     let systemTask: Task<Void, Never>
     let levelEmitTask: Task<Void, Never>
     let watchdogTask: Task<Void, Never>
+    /// Live ASR (P4.2) の結果転送 Task。`liveTranscription` 無効時は空。
+    let liveASRTasks: [Task<Void, Never>]
 }
 
 // MARK: - WriterSink
@@ -582,6 +716,16 @@ private struct ActiveSession {
 /// pause 中は write を no-op にする (ハードウェアは止めず PCM だけ捨てる)。
 /// `LevelAccumulator` への投入は **pause 中も行う** (UI のレベルメーターは録音中も
 /// pause 中も「実音」を見せたい想定。ファイル書き込みのみ止める)。
+///
+/// ## P4.1 fan-out
+/// オプションで **live ASR feed continuation** を保持し、各 PCM buffer を
+/// (a) 書き込み、(b) レベル累積、(c) live ASR の 3 経路に **同一 buffer を**
+/// fan-out する。callback 型の fan-out (= broadcast pattern ではなく
+/// 「複数 consumer をその場で同期呼び出し」) を採ることで、buffer の memcpy を
+/// 増やさず投機 ASR を 1-pass で走らせられる。
+/// 設計上の合意点: pause 中も live ASR feed には buffer を流す
+/// (level meter と同じ「録音以外の用途」扱い)。pause 中の文字起こしは
+/// 後で破棄する選択肢もあるが、上位レイヤでフィルタする方が責務分離しやすい。
 final class WriterSink: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio.write")
     private let lock = NSLock()
@@ -590,10 +734,18 @@ final class WriterSink: @unchecked Sendable {
     private var closed: Bool = false
     private var writeFailureCount: Int = 0
     private let accumulator: LevelAccumulator
+    /// Live ASR feed の continuation。`nil` なら fan-out しない (post-stop transcribe のみ)。
+    /// finish() は close() で呼ばれる。
+    private var liveASRFeed: AsyncStream<AVAudioPCMBuffer>.Continuation?
 
-    init(writer: WAVFileWriter, accumulator: LevelAccumulator) {
+    init(
+        writer: WAVFileWriter,
+        accumulator: LevelAccumulator,
+        liveASRFeed: AsyncStream<AVAudioPCMBuffer>.Continuation? = nil
+    ) {
         self.writer = writer
         self.accumulator = accumulator
+        self.liveASRFeed = liveASRFeed
     }
 
     /// 累積 write 失敗回数 (UI/診断用)。
@@ -610,8 +762,19 @@ final class WriterSink: @unchecked Sendable {
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
-        // レベル計算は pause 中も継続 (UI 用)
+        // ── Fan-out 経路 1: レベル計算は pause 中も継続 (UI 用)
         accumulator.add(buffer)
+
+        // ── Fan-out 経路 2: live ASR feed (もし有効なら)。
+        // 同期 yield。AsyncStream は内部でロックを持つので thread-safe。
+        // pause 中も流す方針 (上位で破棄するか維持するか決める)。
+        lock.lock()
+        let feed = liveASRFeed
+        let isClosed = closed
+        lock.unlock()
+        if !isClosed, let feed {
+            feed.yield(buffer)
+        }
 
         lock.lock()
         let shouldWrite = !paused && !closed
@@ -640,8 +803,13 @@ final class WriterSink: @unchecked Sendable {
         closed = true
         let w = writer
         writer = nil
+        let feed = liveASRFeed
+        liveASRFeed = nil
         lock.unlock()
         w?.close()
+        // Live ASR feed を finish: 上流が止まったことを ASR 側に伝え、
+        // finalizeAndFinish が呼ばれて残りの isFinal セグメントが確定する。
+        feed?.finish()
     }
 }
 

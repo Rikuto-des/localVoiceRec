@@ -8,6 +8,7 @@ public actor FakeAudioCaptureService: AudioCaptureService {
     private nonisolated let stream: AsyncStream<CaptureState>
     private let levelContinuation: AsyncStream<AudioLevelSnapshot>.Continuation
     private nonisolated let levelStream: AsyncStream<AudioLevelSnapshot>
+    private nonisolated let liveTranscriptStream: AsyncStream<TranscriptSegment>
     private var startedAt: Date?
     private var session: CaptureSession?
     private var _currentState: CaptureState = .idle
@@ -27,6 +28,9 @@ public actor FakeAudioCaptureService: AudioCaptureService {
             bufferingPolicy: .bufferingNewest(2)
         ) { capturedLevels = $0 }
         self.levelContinuation = capturedLevels
+
+        // 空の live transcript stream (Fake は live ASR 未対応)。
+        self.liveTranscriptStream = AsyncStream<TranscriptSegment> { _ in /* never yield */ }
     }
 
     public var currentState: CaptureState { _currentState }
@@ -34,6 +38,8 @@ public actor FakeAudioCaptureService: AudioCaptureService {
     public nonisolated var stateUpdates: AsyncStream<CaptureState> { stream }
 
     public nonisolated var liveAudioLevels: AsyncStream<AudioLevelSnapshot> { levelStream }
+
+    public nonisolated var liveTranscripts: AsyncStream<TranscriptSegment> { liveTranscriptStream }
 
     private func transition(to next: CaptureState) {
         guard next != _currentState else { return }
