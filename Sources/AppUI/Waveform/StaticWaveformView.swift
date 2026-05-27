@@ -75,12 +75,21 @@ struct StaticWaveformView: View {
                     .foregroundStyle(isSilent ? Theme.Palette.warning : .secondary)
                     .accessibilityLabel("ピーク \(maxPeakLabel)")
                 if isSilent {
-                    Label("無音", systemImage: "exclamationmark.triangle.fill")
+                    // 「無音」を示すアイコンには `waveform.slash` を使い、メニューバーの
+                    // 「録音中断」三角アイコンと意味的に区別する。
+                    // 三角警告は「動作中の異常」を示すが、ここは事後の「信号なし」事実通知。
+                    Label("無音", systemImage: "waveform.slash")
                         .font(.caption2.bold())
                         .foregroundStyle(Theme.Palette.warning)
                         .labelStyle(.iconOnly)
-                        .help("信号がほぼ検出されません。録音されていない可能性があります。")
-                        .accessibilityLabel("無音を検出")
+                        .help("""
+                            このチャンネルは録音中に信号がほぼ検出されませんでした。\
+                            考えられる原因:
+                            ・Mic 側: 端末のミュート、入力デバイスの選択ミス、マイク権限拒否
+                            ・System 側: 録音中に Mac から音が出ていない、画面とシステムオーディオの収録権限が未許可、Bluetooth など外部デバイスにルーティングされている
+                            システム設定 → プライバシーとセキュリティ で権限を確認してください。
+                            """)
+                        .accessibilityLabel("このチャンネルは無音です")
                 }
             }
         }
