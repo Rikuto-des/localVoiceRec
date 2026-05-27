@@ -25,14 +25,46 @@ struct RecordingDetailView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                 if let recording = viewModel.selectedRecording {
                     header(recording: recording)
+                    waveformSection(recording: recording)
                 }
                 transcriptSection
                 summarySection
+                DiagnosticsPanel(viewModel: viewModel)
             }
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle(viewModel.selectedRecording?.title ?? "詳細")
+    }
+
+    // MARK: - Waveform
+
+    @State private var isWaveformExpanded: Bool = true
+
+    private func waveformSection(recording: Recording) -> some View {
+        DisclosureGroup(isExpanded: $isWaveformExpanded) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                StaticWaveformView(
+                    url: recording.micAudioURL,
+                    label: "Mic（自分）",
+                    tint: .accentColor
+                )
+                StaticWaveformView(
+                    url: recording.systemAudioURL,
+                    label: "System（相手）",
+                    tint: .orange
+                )
+            }
+            .padding(.top, Theme.Spacing.sm)
+        } label: {
+            Label("録音波形", systemImage: "waveform")
+                .font(.subheadline.bold())
+        }
+        .padding(Theme.Spacing.md)
+        .background(
+            Color(nsColor: .controlBackgroundColor),
+            in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+        )
     }
 
     // MARK: - Header

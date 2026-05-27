@@ -62,6 +62,9 @@ public final class AppViewModel {
         return summarizingIDs.contains(id)
     }
 
+    /// 診断パネル用の情報（権限 / 利用可能 locale / 要約サービス状況）。
+    public private(set) var diagnostics: DiagnosticsInfo = .empty
+
     /// `subscribeToCaptureState()` で開始した監視タスク。
     private var stateSubscriptionTask: Task<Void, Never>?
     /// 進行中の自動パイプライン (録音 ID → Task)
@@ -455,6 +458,41 @@ public final class AppViewModel {
         }
     }
 
+    // MARK: - Intents: Diagnostics
+
+    /// 診断情報（権限・locale・要約 availability）を取得し直す。
+    /// View 側の `.task` で初回 + 「更新」ボタンで再取得する。
+    public func refreshDiagnostics() async {
+        let auth = await capture.authorizationStatus()
+        let locales = await transcription.installedLocales()
+        let summary = await self.summary.availability()
+        diagnostics = DiagnosticsInfo(
+            micAuthorization: auth.microphone,
+            systemAudioAuthorization: auth.systemAudio,
+            installedLocales: locales.map(\.identifier),
+            summaryAvailability: summary
+        )
+    }
+
+    // MARK: - Intents: Bulk retry
+
+    /// `pending` / `emptyTranscript` / `failed` 状態の録音すべてに対して順に
+    /// `transcribeRecording` を呼ぶ。失敗してもループは継続する。
+    public func retryAllPendingTranscriptions() async {
+        // 現在のスナップショットを撮ってからループ（途中で recordings が変わるのを避ける）
+        let snapshot = recordings
+        for recording in snapshot {
+            let status = self.status(for: recording.id)
+            switch status {
+            case .pending, .emptyTranscript, .failed:
+                await transcribeRecording(recording)
+            case .transcribing, .summarizing, .transcribed, .completed:
+                continue
+            }
+        }
+        await refreshList()
+    }
+
     // MARK: - Derived state helpers
 
     /// 録音中相当か（recording / paused / preparing / finalizing）
@@ -486,4 +524,34 @@ public final class AppViewModel {
             return false
         }
     }
+}
+
+// MARK: - Diagnostics
+
+/// 診断パネルで表示する情報のスナップショット。
+public struct DiagnosticsInfo: Sendable, Equatable {
+    public let micAuthorization: AudioAuthorizationStatus.State
+    public let systemAudioAuthorization: AudioAuthorizationStatus.State
+    /// `Locale.identifier` の文字列配列（例: `"ja_JP"`, `"en_US"`）。
+    public let installedLocales: [String]
+    public let summaryAvailability: SummaryAvailability
+
+    public init(
+        micAuthorization: AudioAuthorizationStatus.State,
+        systemAudioAuthorization: AudioAuthorizationStatus.State,
+        installedLocales: [String],
+        summaryAvailability: SummaryAvailability
+    ) {
+        self.micAuthorization = micAuthorization
+        self.systemAudioAuthorization = systemAudioAuthorization
+        self.installedLocales = installedLocales
+        self.summaryAvailability = summaryAvailability
+    }
+
+    public static let empty = DiagnosticsInfo(
+        micAuthorization: .notDetermined,
+        systemAudioAuthorization: .notDetermined,
+        installedLocales: [],
+        summaryAvailability: .available
+    )
 }

@@ -8,6 +8,7 @@ import Contracts
 /// すべての子ビューに渡す。
 public struct MainScene: Scene {
     @State private var viewModel: AppViewModel
+    private let captureService: any AudioCaptureService
 
     public init(
         capture: any AudioCaptureService,
@@ -15,6 +16,7 @@ public struct MainScene: Scene {
         transcription: any TranscriptionService,
         summary: any SummaryService
     ) {
+        self.captureService = capture
         _viewModel = State(
             initialValue: AppViewModel(
                 capture: capture,
@@ -27,7 +29,7 @@ public struct MainScene: Scene {
 
     public var body: some Scene {
         MenuBarExtra {
-            MenuBarContentView(viewModel: viewModel)
+            MenuBarContentView(viewModel: viewModel, captureService: captureService)
         } label: {
             MenuBarLabel(
                 state: viewModel.captureState,
