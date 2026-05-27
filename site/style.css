@@ -759,3 +759,101 @@ h2 em {
   body::before { display: none; }
   .globalnav, .download-cta, .faq summary::after { display: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Legal pages (privacy / terms)
+   ───────────────────────────────────────────────────────────── */
+.legal {
+  padding: 56px 0 96px;
+}
+.legal .wrap { max-width: 760px; }
+.legal-eyebrow {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 12px;
+}
+.legal h1 {
+  font-size: 40px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 255, 255, 0.78) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.legal-lead {
+  color: var(--text-3);
+  margin: 0 0 32px;
+  font-size: 14px;
+}
+.legal h2 {
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  margin: 40px 0 12px;
+  color: var(--text);
+}
+.legal p, .legal ul {
+  color: var(--text-2);
+  font-size: 16px;
+  line-height: 1.75;
+  margin: 0 0 14px;
+}
+.legal ul { padding-left: 22px; }
+.legal li { margin-bottom: 6px; }
+.legal a {
+  color: var(--accent-link);
+  text-decoration: underline;
+  text-decoration-color: rgba(160, 217, 255, 0.4);
+  text-underline-offset: 3px;
+}
+.legal a:hover { text-decoration-color: var(--accent-link); }
+.legal code {
+  background: var(--glass-bg-2);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.legal pre {
+  background: var(--glass-bg-2);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 12px 0 20px;
+}
+.legal pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.legal-callout {
+  background: linear-gradient(135deg, rgba(255, 111, 216, 0.08), rgba(61, 90, 254, 0.08));
+  border: 1px solid rgba(255, 111, 216, 0.25);
+  border-radius: 12px;
+  padding: 20px 22px;
+  margin: 16px 0 24px;
+}
+.legal-callout p:last-child { margin-bottom: 0; }
+.legal-callout strong { color: #FFB8E0; }
+
+/* Consent banner on landing page */
+.consent-warning {
+  background: linear-gradient(135deg, rgba(255, 111, 216, 0.10), rgba(61, 90, 254, 0.10));
+  border: 1px solid rgba(255, 111, 216, 0.30);
+  border-radius: 14px;
+  padding: 18px 22px;
+  margin: 24px auto 0;
+  max-width: 760px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.consent-warning strong { color: #FFB8E0; display: block; margin-bottom: 6px; }
+.consent-warning a { color: var(--accent-link); text-decoration: underline; text-underline-offset: 3px; }

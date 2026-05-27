@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>プライバシーポリシー — localVoiceRec</title>
+  <meta name="description" content="localVoiceRec のプライバシーポリシー。本アプリは利用者のデータを一切収集・送信しません。" />
+  <meta name="robots" content="index,follow" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="globalnav" role="banner">
+  <div class="wrap-wide">
+    <div class="globalnav-inner">
+      <div class="globalnav-brand">
+        <a href="/" style="text-decoration:none;color:inherit;display:inline-flex;align-items:center;gap:8px;">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <defs>
+              <linearGradient id="lvrBrandBg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%"  stop-color="#A569FF"/>
+                <stop offset="50%" stop-color="#3D5AFE"/>
+                <stop offset="100%" stop-color="#3AFFF0"/>
+              </linearGradient>
+              <linearGradient id="lvrBrandBars" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"  stop-color="#FFFFFF"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0.85)"/>
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" rx="14" fill="url(#lvrBrandBg)"/>
+            <g fill="url(#lvrBrandBars)">
+              <rect x="15.5" y="24.5" width="4" height="15" rx="2"/>
+              <rect x="22" y="18" width="4" height="28" rx="2"/>
+              <rect x="28.5" y="13.5" width="4.5" height="37" rx="2.25"/>
+              <rect x="35.5" y="20" width="4" height="24" rx="2"/>
+              <rect x="42" y="26" width="4" height="12" rx="2"/>
+            </g>
+            <circle cx="50" cy="14" r="4.25" fill="#FF6FD8"/>
+          </svg>
+          localVoiceRec
+        </a>
+      </div>
+      <div class="globalnav-meta"><a href="/" style="color:inherit;text-decoration:none;">← ホーム</a></div>
+    </div>
+  </div>
+</header>
+
+<main class="legal">
+  <div class="wrap">
+    <p class="legal-eyebrow">Legal</p>
+    <h1>プライバシーポリシー</h1>
+    <p class="legal-lead">最終更新日: 2026 年 5 月 27 日</p>
+
+    <p>
+      本ポリシーは、Rikuto Yasuda（以下「開発者」）が提供する macOS アプリケーション
+      <strong>localVoiceRec</strong>（以下「本アプリ」）における、利用者の情報の取扱いを定めるものです。
+    </p>
+
+    <h2>1. 基本方針</h2>
+    <p>
+      本アプリは、利用者のあらゆるデータを<strong>一切収集・記録・送信しません</strong>。
+      録音音声、文字起こし結果、要約、メタデータを含むすべてのデータは、利用者の端末内にのみ保存され、
+      開発者および第三者は一切アクセスできません。
+    </p>
+
+    <h2>2. 通信を行わない技術的保証</h2>
+    <p>
+      本アプリは macOS の App Sandbox を有効化し、ネットワーク通信用の entitlement
+      （<code>com.apple.security.network.client</code> および <code>com.apple.security.network.server</code>）を
+      意図的に付与していません。これにより、オペレーティングシステムが本アプリによるネットワーク接続を
+      技術的に拒否します。
+    </p>
+    <p>
+      この事実は、配布されている <code>.app</code> に対して以下のコマンドを実行することで誰でも検証できます。
+    </p>
+    <pre><code>codesign --display --entitlements - /Applications/localVoiceRec.app</code></pre>
+
+    <h2>3. 録音データの保存場所</h2>
+    <p>
+      録音音声・文字起こし・要約は、本アプリの Sandbox 内
+      （<code>~/Library/Containers/com.example.localVoiceRec/Data/</code> 配下）にのみ保存されます。
+      他のアプリや外部からはアクセスできません。利用者はアプリ UI から個別または一括で削除でき、
+      削除時にファイル実体も同時に消去されます。
+    </p>
+
+    <h2>4. 端末の権限</h2>
+    <p>本アプリは以下の macOS 権限を利用します。いずれもオンデバイス処理のみのために使用します。</p>
+    <ul>
+      <li><strong>マイク</strong>: 自分側の音声収録のため</li>
+      <li><strong>システム音声（Core Audio Tap）</strong>: 会議相手側の音声収録のため</li>
+      <li><strong>ファイル保存（ユーザーが NSSavePanel で選択した場所のみ）</strong>: 議事録のエクスポート用</li>
+    </ul>
+    <p>これらは macOS の権限ダイアログを通じて利用者の明示的な許可を得たうえでのみ機能します。</p>
+
+    <h2>5. 第三者サービス・解析ツール</h2>
+    <p>
+      本アプリには、解析ツール（Google Analytics、Firebase Analytics 等）、クラッシュレポーター、
+      広告 SDK、第三者の SaaS 連携は<strong>一切組み込まれていません</strong>。
+    </p>
+
+    <h2>6. 文字起こしと要約の処理</h2>
+    <p>
+      文字起こしは Apple の <code>Speech</code> フレームワーク（<code>SpeechAnalyzer</code>）を用いて
+      端末内で実行されます。要約は Apple Intelligence のオンデバイスモデル
+      （<code>FoundationModels</code> フレームワーク）を用いて端末内で実行されます。
+      Apple の Private Cloud Compute は本アプリでは使用しません
+      （ネットワーク entitlement がないため、技術的に経路が存在しません）。
+    </p>
+
+    <h2>7. 子供のプライバシー</h2>
+    <p>
+      本アプリは特定の年齢層を対象としていません。利用者の年齢に関わらずデータを収集しないため、
+      子供のプライバシーに関する追加の取扱いも発生しません。
+    </p>
+
+    <h2>8. 配布サイトについて</h2>
+    <p>
+      本ポリシーが掲載されている配布サイト（<code>localvoicerec.pages.dev</code>）は
+      Cloudflare Pages 上でホストされています。サイト閲覧時のアクセスログ等は
+      Cloudflare の標準的なログとして同社のプライバシーポリシーに従って取り扱われます。
+      開発者は閲覧者の個別アクセスログを取得・保管していません。
+    </p>
+
+    <h2>9. ポリシーの変更</h2>
+    <p>
+      本ポリシーは予告なく変更される場合があります。重要な変更を行う場合は、本ページの「最終更新日」を
+      更新し、必要に応じて GitHub リポジトリのリリースノートで告知します。
+    </p>
+
+    <h2>10. お問い合わせ</h2>
+    <p>
+      本ポリシーに関するお問い合わせは
+      <a href="https://github.com/Rikuto-des/localVoiceRec/issues">GitHub Issues</a>
+      よりお願いいたします。
+    </p>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="wrap-wide">
+    <div class="footer-inner">
+      <div>© 2026 localVoiceRec</div>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/privacy.html">プライバシー</a>
+        <a href="/terms.html">利用規約</a>
+        <a href="https://github.com/Rikuto-des/localVoiceRec">Source</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
