@@ -61,7 +61,7 @@ wrangler pages deploy site --project-name=localvoicerec
 
 ビルドした `.dmg` をサイトに含めるには 2 つの方法がある。
 
-### B1. リポジトリに含める（小規模・社内限定向け）
+### B1. リポジトリに含める（小規模・限定配布向け）
 
 ```bash
 cp dist/localVoiceRec-0.1.0.dmg site/downloads/
