@@ -48,6 +48,75 @@ public struct MainScene: Scene {
             height: Theme.Layout.listWindowMinHeight
         )
         .windowResizability(.contentMinSize)
+        // A3: 「録音」メニュー — メインメニューに正式登録して、ウィンドウが
+        // フォアグラウンドのときに ⌘R / ⌘. / ⌘P でグローバル操作できるようにする。
+        // メニューバーポップアップを開かなくても録音制御が可能。
+        .commands {
+            RecordingCommands(viewModel: viewModel)
+        }
+    }
+}
+
+/// A3: 「録音」メニュー。`CommandMenu` でメインメニューにマウントされる。
+///
+/// MenuBarExtra (LSUIElement=YES) なアプリでも、Window がフォアグラウンドであれば
+/// 通常のメインメニューが表示される。ショートカットはどの状態でも有効。
+private struct RecordingCommands: Commands {
+    @Bindable var viewModel: AppViewModel
+
+    var body: some Commands {
+        CommandMenu("録音") {
+            Button(primaryActionLabel) {
+                Task { await primaryAction() }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(primaryActionDisabled)
+
+            Button("停止") {
+                Task { await viewModel.stopRecording() }
+            }
+            .keyboardShortcut(".", modifiers: .command)
+            .disabled(!viewModel.isCapturing)
+
+            Button(viewModel.isPaused ? "再開" : "一時停止") {
+                Task { await togglePause() }
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(!viewModel.isActivelyRecording && !viewModel.isPaused)
+        }
+    }
+
+    /// ⌘R: idle/failed のときは「開始」、それ以外（録音中など）は「停止」のトグル。
+    private var primaryActionLabel: String {
+        if viewModel.isCapturing { return "録音を停止" }
+        return "録音を開始"
+    }
+
+    private var primaryActionDisabled: Bool {
+        if case .interrupted = viewModel.captureState {
+            return false // 中断時は停止して保存できるよう開放
+        }
+        // preparing / finalizing は連打防止
+        switch viewModel.captureState {
+        case .preparing, .finalizing: return true
+        default: return viewModel.isBusy && !viewModel.isCapturing
+        }
+    }
+
+    private func primaryAction() async {
+        if viewModel.isCapturing {
+            await viewModel.stopRecording()
+        } else {
+            await viewModel.startRecording()
+        }
+    }
+
+    private func togglePause() async {
+        if viewModel.isPaused {
+            await viewModel.resumeRecording()
+        } else if viewModel.isActivelyRecording {
+            await viewModel.pauseRecording()
+        }
     }
 }
 

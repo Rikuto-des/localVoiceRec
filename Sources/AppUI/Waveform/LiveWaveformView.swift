@@ -41,7 +41,8 @@ struct LiveWaveformView: View {
             Canvas { ctx, size in
                 drawBackground(ctx: ctx, size: size)
                 drawWaveform(ctx: ctx, size: size, channel: .mic, color: .accentColor)
-                drawWaveform(ctx: ctx, size: size, channel: .system, color: Theme.Palette.warning)
+                // A10: 相手チャンネルは systemAudio 色 (warning と分離)
+                drawWaveform(ctx: ctx, size: size, channel: .system, color: Theme.Palette.systemAudio)
                 drawAxis(ctx: ctx, size: size)
             }
             .frame(height: 80)
@@ -54,7 +55,8 @@ struct LiveWaveformView: View {
             headerRow(
                 title: "System",
                 systemImage: "speaker.wave.2.fill",
-                color: Theme.Palette.warning,
+                // A10: warning (オレンジ) ではなく systemAudio (indigo) を使用
+                color: Theme.Palette.systemAudio,
                 rms: history.last?.systemRMS ?? 0,
                 isSilent: history.last?.isSystemSilent ?? true
             )

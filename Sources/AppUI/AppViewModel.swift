@@ -1,6 +1,11 @@
 import Foundation
 import Observation
+import os
 import Contracts
+
+/// UI 層からのエラー文表示用ロガー。詳細な enum case 名は os.log にのみ残し、
+/// `lastError` には日本語の actionable メッセージだけを入れる方針。
+private let uiErrorLog = Logger(subsystem: "localVoiceRec.AppUI", category: "AppViewModel")
 
 /// 一覧表示用の録音状態。
 public enum RecordingStatus: Sendable, Hashable {
@@ -38,7 +43,9 @@ public final class AppViewModel {
     public private(set) var segments: [TranscriptSegment] = []
     public private(set) var summaryDocument: SummaryDocument?
     public private(set) var summaryAvailability: SummaryAvailability = .available
-    public private(set) var lastError: String?
+    /// View からも `nil` を代入してエラー表示を閉じられるよう setter を公開。
+    /// 設定 (代入) は MainActor 隔離内のみ。
+    public var lastError: String?
     public private(set) var isBusy: Bool = false
     /// 文字起こし進行中の録音 ID 集合
     public private(set) var transcribingIDs: Set<UUID> = []
@@ -74,6 +81,10 @@ public final class AppViewModel {
     /// 手動「文字起こしを実行」が押されたらクリアして再試行を許可する。
     private var autoTranscribeAttempted: Set<UUID> = []
 
+    /// search debounce 用の進行中タスク。次のキーストロークで cancel される。
+    /// A12: 毎キーストローク fetch で SwiftData が刻まれる問題への対策。
+    private var pendingSearchTask: Task<Void, Never>?
+
     /// 録音中のレベルスナップショットの rolling buffer。
     /// **メニューバーポップアップを閉じても継続して更新される** ように、
     /// ViewModel 自身が `service.liveAudioLevels` を購読し、ここに保持する。
@@ -102,6 +113,84 @@ public final class AppViewModel {
     // 注: `Task` の自動キャンセルは `subscribeToCaptureState()` 再呼び出し時の
     // 既存タスクキャンセルでカバー。`deinit` からは MainActor isolated プロパティに
     // 触れないため、明示的なキャンセル API を View 側から呼ぶ運用とする。
+
+    // MARK: - Error formatting
+
+    /// `lastError` に入れる UI 向けメッセージを構築する。
+    ///
+    /// 方針:
+    /// - case 名 (`String(describing:)`) はユーザーに見せない
+    /// - 代わりに **次に何をすればよいか** を日本語で書く
+    /// - 詳細は `uiErrorLog` (os.log) に流して開発者だけが見られるようにする
+    private func userMessage(for error: Error, context: String) -> String {
+        // 開発者向けには case 名を含む詳細を残す
+        uiErrorLog.error("\(context, privacy: .public): \(String(describing: error), privacy: .public)")
+
+        switch error {
+        case let captureError as AudioCaptureError:
+            switch captureError {
+            case .microphonePermissionDenied:
+                return "マイクへのアクセス許可が必要です。システム設定 → プライバシーとセキュリティ → マイク で localVoiceRec を有効にしてください。"
+            case .systemAudioPermissionDenied:
+                return "システム音声を録音するには画面収録の許可が必要です。システム設定 → プライバシーとセキュリティ → 画面とシステムオーディオの収録 で localVoiceRec を有効にしてください。"
+            case .engineStartFailed:
+                return "オーディオエンジンを起動できませんでした。他のアプリがマイクを占有していないか確認し、再試行してください。"
+            case .processTapCreateFailed, .aggregateDeviceCreateFailed:
+                return "システム音声の取得に失敗しました。アプリを再起動するか、Mac を再起動して再試行してください。"
+            case .alreadyRecording:
+                return "既に録音中です。先に現在の録音を停止してください。"
+            case .notRecording:
+                return "録音は開始されていません。"
+            case .fileWriteFailed:
+                return "録音ファイルの書き込みに失敗しました。空き容量と書き込み権限を確認してください。"
+            case .outputDirectoryUnavailable:
+                return "録音保存先フォルダにアクセスできません。アプリの保存先設定を確認してください。"
+            }
+
+        case let transcriptionError as TranscriptionError:
+            switch transcriptionError {
+            case .unsupportedLocale:
+                return "選択された言語の文字起こしに対応していません。診断パネルでインストール済み Locale を確認してください。"
+            case .assetInstallationFailed:
+                return "文字起こしに必要なモデルのインストールに失敗しました。ネットワーク接続を確認して再試行してください。"
+            case .analyzerFailed:
+                return "文字起こし処理が中断されました。録音ファイルを確認し、再実行してください。"
+            case .fileNotReadable:
+                return "録音ファイルを読み込めません。ファイルが移動・削除されていないか確認してください。"
+            case .cancelled:
+                return "文字起こしはキャンセルされました。"
+            }
+
+        case let summaryError as SummaryError:
+            switch summaryError {
+            case .notAvailable:
+                return "要約サービスが利用できません。Apple Intelligence の設定とモデルのダウンロード状況を確認してください。"
+            case .generationFailed:
+                return "要約の生成に失敗しました。少し待ってから再試行してください。"
+            case .contextWindowExceeded:
+                return "録音内容が要約モデルの上限を超えています。録音を分割するか、短い区間で再試行してください。"
+            case .cancelled:
+                return "要約生成はキャンセルされました。"
+            case .decodingFailed:
+                return "要約の解析に失敗しました。もう一度生成を試してください。"
+            }
+
+        case let repoError as RepositoryError:
+            switch repoError {
+            case .notFound:
+                return "対象の録音が見つかりませんでした。一覧を更新してください。"
+            case .ioFailed:
+                return "データの読み書きに失敗しました。空き容量とアクセス権限を確認してください。"
+            case .storeUnavailable:
+                return "データストアにアクセスできません。アプリを再起動してください。"
+            case .fileDeletionFailed:
+                return "ファイルの削除に失敗しました。手動で Finder から削除してください。"
+            }
+
+        default:
+            return "予期しないエラーが発生しました。問題が続く場合はアプリを再起動してください。"
+        }
+    }
 
     // MARK: - State subscription
 
@@ -182,7 +271,7 @@ public final class AppViewModel {
             captureState = await capture.currentState
             lastError = nil
         } catch {
-            lastError = "録音開始に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "startRecording")
         }
     }
 
@@ -198,7 +287,7 @@ public final class AppViewModel {
             // 自動で文字起こし → 要約のパイプラインを開始（fire-and-forget）
             runAutoPipeline(for: recording)
         } catch {
-            lastError = "録音停止に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "stopRecording")
         }
     }
 
@@ -230,7 +319,7 @@ public final class AppViewModel {
             captureState = await capture.currentState
             lastError = nil
         } catch {
-            lastError = "一時停止に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "pauseRecording")
         }
     }
 
@@ -240,7 +329,7 @@ public final class AppViewModel {
             captureState = await capture.currentState
             lastError = nil
         } catch {
-            lastError = "再開に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "resumeRecording")
         }
     }
 
@@ -272,7 +361,7 @@ public final class AppViewModel {
             recordingStatuses = map
             lastError = nil
         } catch {
-            lastError = "一覧の読み込みに失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "refreshList")
         }
     }
 
@@ -286,12 +375,32 @@ public final class AppViewModel {
         return recordingStatuses[id] ?? .pending
     }
 
+    /// 入力デバウンス付きの検索エントリポイント。
+    ///
+    /// A12: `.searchable` が毎キーストロークで `search(query:)` を直接叩く UX 問題に対応。
+    /// 進行中の検索タスクをキャンセルし、300ms 待ってからスナップショットされた最新の
+    /// クエリで実行する。空文字なら `refreshList` を呼ぶ。
+    public func searchDebounced(query: String) {
+        pendingSearchTask?.cancel()
+        let trimmed = query
+        pendingSearchTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            if Task.isCancelled { return }
+            guard let self else { return }
+            if trimmed.isEmpty {
+                await self.refreshList()
+            } else {
+                await self.search(query: trimmed)
+            }
+        }
+    }
+
     public func search(query: String) async {
         do {
             recordings = try await repository.search(query: query)
             lastError = nil
         } catch {
-            lastError = "検索に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "search")
         }
     }
 
@@ -332,7 +441,7 @@ public final class AppViewModel {
                 }
             }
         } catch {
-            lastError = "詳細の読み込みに失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "select")
         }
     }
 
@@ -395,7 +504,7 @@ public final class AppViewModel {
             }
             lastError = nil
         } catch {
-            lastError = "文字起こしに失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "transcribeRecording")
             // 失敗時は repository から既存 segments を復元して、過去データが消えたように見せない
             if selectedRecording?.id == recording.id {
                 segments = (try? await repository.loadSegments(for: recording.id)) ?? []
@@ -433,7 +542,7 @@ public final class AppViewModel {
             }
             lastError = nil
         } catch {
-            lastError = "要約の生成に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "summarizeRecording")
         }
     }
 
@@ -465,7 +574,7 @@ public final class AppViewModel {
             summaryDocument = newSummary
             lastError = nil
         } catch {
-            lastError = "要約の再生成に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "regenerateSummary")
         }
     }
 
@@ -514,7 +623,7 @@ public final class AppViewModel {
             await refreshList()
             lastError = nil
         } catch {
-            lastError = "削除に失敗しました: \(String(describing: error))"
+            lastError = userMessage(for: error, context: "deleteRecording")
         }
     }
 

@@ -19,6 +19,8 @@ struct RecordingListView: View {
     @Bindable var viewModel: AppViewModel
     @State private var searchText: String = ""
     @State private var selectedID: Recording.ID?
+    /// 削除確認ダイアログの対象。nil なら閉じる。A4: 誤削除防止。
+    @State private var pendingDeletion: Recording?
 
     var body: some View {
         NavigationSplitView {
@@ -38,13 +40,8 @@ struct RecordingListView: View {
             await viewModel.refreshList()
         }
         .onChange(of: searchText) { _, newValue in
-            Task {
-                if newValue.isEmpty {
-                    await viewModel.refreshList()
-                } else {
-                    await viewModel.search(query: newValue)
-                }
-            }
+            // A12: 毎キーストローク fetch を 300ms デバウンス。
+            viewModel.searchDebounced(query: newValue)
         }
         .onChange(of: selectedID) { _, newValue in
             guard let id = newValue,
@@ -78,17 +75,46 @@ struct RecordingListView: View {
                                 }
                                 Divider()
                                 Button(role: .destructive) {
-                                    Task { await viewModel.deleteRecording(recording) }
+                                    // A4: 削除は必ず確認ダイアログを挟む
+                                    pendingDeletion = recording
                                 } label: {
-                                    Label("削除", systemImage: "trash")
+                                    Label("削除…", systemImage: "trash")
                                 }
                             }
                     }
                 }
                 .listStyle(.sidebar)
+                // A5: 標準の ⌫ キーで選択中の録音を削除（確認ダイアログ経由）
+                .onDeleteCommand {
+                    if let id = selectedID,
+                       let recording = viewModel.recordings.first(where: { $0.id == id }) {
+                        pendingDeletion = recording
+                    }
+                }
             }
         }
         .searchable(text: $searchText, prompt: "タイトルで検索")
+        // A4: 削除確認ダイアログ。文字起こし・要約も消える旨を明示。
+        .confirmationDialog(
+            "この録音を削除しますか？",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { recording in
+            Button("削除", role: .destructive) {
+                Task {
+                    await viewModel.deleteRecording(recording)
+                    pendingDeletion = nil
+                }
+            }
+            Button("キャンセル", role: .cancel) {
+                pendingDeletion = nil
+            }
+        } message: { recording in
+            Text("\(recording.title) の音声・文字起こし・要約がすべて消去されます。この操作は取り消せません。")
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

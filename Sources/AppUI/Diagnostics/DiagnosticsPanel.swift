@@ -228,7 +228,8 @@ struct DiagnosticsPanel: View {
     private var deniedHelpBox: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Label {
-                Text("一度「拒否」した権限は、システム設定からのみ許可に変更できます。")
+                // A7: 拒否されている対象に応じてどこを開けばよいかを明示
+                Text(deniedHelpMessage)
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {
                 Image(systemName: "lock.shield.fill")
@@ -241,19 +242,59 @@ struct DiagnosticsPanel: View {
                 Button {
                     openSystemSettings()
                 } label: {
-                    Label("システム設定を開く", systemImage: "gearshape")
+                    Label(openSettingsButtonLabel, systemImage: "gearshape")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("プライバシーとセキュリティ設定を開きます")
+                .help("該当のプライバシー設定ペインを開きます")
             }
         }
         .padding(.top, Theme.Spacing.xs)
     }
 
+    /// A7: 拒否対象に応じたガイド文。
+    private var deniedHelpMessage: String {
+        let micDenied = viewModel.diagnostics.micAuthorization == .denied
+        let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
+        switch (micDenied, systemDenied) {
+        case (true, true):
+            return "マイクと画面収録の両方が拒否されています。システム設定でそれぞれ localVoiceRec を有効にしてください。まずマイクの設定を開きます。"
+        case (true, false):
+            return "マイクの権限が拒否されています。システム設定 → プライバシーとセキュリティ → マイク で localVoiceRec を許可してください。"
+        case (false, true):
+            return "システム音声 (画面とシステムオーディオの収録) が拒否されています。システム設定で localVoiceRec を許可してください。"
+        case (false, false):
+            return "一度「拒否」した権限は、システム設定からのみ許可に変更できます。"
+        }
+    }
+
+    private var openSettingsButtonLabel: String {
+        let micDenied = viewModel.diagnostics.micAuthorization == .denied
+        let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
+        if !micDenied && systemDenied {
+            return "画面収録設定を開く"
+        }
+        return "マイク設定を開く"
+    }
+
+    /// A7: 拒否されているパーミッションごとに開くべき設定ペインを変える。
+    /// 旧実装は常にマイクのみへ飛ばしていたため、画面収録 (システム音声) を拒否した
+    /// ユーザーが「マイクしか出てこない」と混乱していた問題への対策。
     private func openSystemSettings() {
-        // プライバシー設定 → マイク
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+        let micDenied = viewModel.diagnostics.micAuthorization == .denied
+        let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
+
+        // 両方拒否ならマイクを優先（必要なら次のステップでシステム音声側を開く運用）。
+        // どちらでもなければ既存通りマイクへ。
+        let targetURLString: String
+        if micDenied {
+            targetURLString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        } else if systemDenied {
+            targetURLString = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        } else {
+            targetURLString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        }
+        if let url = URL(string: targetURLString) {
             NSWorkspace.shared.open(url)
         }
     }

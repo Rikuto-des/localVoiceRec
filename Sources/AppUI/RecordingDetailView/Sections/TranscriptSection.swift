@@ -83,21 +83,27 @@ extension RecordingDetailView {
                     .help("全文をクリップボードへコピーします")
                 }
 
-                TextEditor(text: .constant(fullTextString))
-                    .font(.system(.body, design: .monospaced))
-                    .lineSpacing(2)
-                    .frame(minHeight: 140, maxHeight: 320)
-                    .padding(Theme.Spacing.xs)
-                    .background(
-                        Theme.Palette.textField,
-                        in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-                            .strokeBorder(Theme.Palette.separator, lineWidth: 0.5)
-                    )
-                    .accessibilityLabel("全文テキスト")
-                    .accessibilityHint("選択してコピーできます")
+                // A6: TextEditor の constant binding は IME が反応して編集可能に見える UX 問題があるため、
+                // 読み取り専用の Text + textSelection に置き換え（macOS 14+ 推奨パターン）。
+                ScrollView(.vertical) {
+                    Text(verbatim: fullTextString)
+                        .font(.system(.body, design: .monospaced))
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Spacing.sm)
+                }
+                .frame(minHeight: 140, maxHeight: 320)
+                .background(
+                    Theme.Palette.textField,
+                    in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                        .strokeBorder(Theme.Palette.separator, lineWidth: 0.5)
+                )
+                .accessibilityLabel("全文テキスト")
+                .accessibilityHint("選択してコピーできます")
             }
             .padding(.top, Theme.Spacing.sm)
         } label: {

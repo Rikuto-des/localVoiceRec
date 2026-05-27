@@ -51,6 +51,10 @@ enum Theme {
         static let success = Color(nsColor: .systemGreen)
         /// エラーの赤 (recording と同色だがセマンティクスで分離)。
         static let error = Color(nsColor: .systemRed)
+        /// A10: システム音声 (相手) の波形・バブル等で使う色。
+        /// 旧実装は `warning` (オレンジ) を共有していたが、Diagnostics の警告と
+        /// 意味衝突するため別系統 (indigo) に分離。Light/Dark どちらでもコントラスト良好。
+        static let systemAudio = Color(nsColor: .systemIndigo)
 
         // ─── Chat bubble ───
         /// 自分 (mic) のチャットバブル背景。アクセントカラーを尊重しつつ視認性を確保。

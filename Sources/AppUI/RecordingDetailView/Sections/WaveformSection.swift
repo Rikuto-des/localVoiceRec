@@ -16,7 +16,8 @@ extension RecordingDetailView {
                 StaticWaveformView(
                     url: recording.systemAudioURL,
                     label: "System（相手）",
-                    tint: Theme.Palette.warning
+                    // A10: warning (オレンジ) との意味衝突を避けるため systemAudio に分離
+                    tint: Theme.Palette.systemAudio
                 )
             }
             .padding(.top, Theme.Spacing.sm)
