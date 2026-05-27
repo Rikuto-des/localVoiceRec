@@ -46,7 +46,7 @@ public enum AudioTapError: Error, CustomStringConvertible {
 
     /// OSStatus を 4-char-code 文字列に変換する。たとえば `'!obj'` のようにエラー名が
     /// `<CoreAudio/AudioHardwareBase.h>` から判別できることがある。
-    static func fourCC(_ s: OSStatus) -> String {
+    public static func fourCC(_ s: OSStatus) -> String {
         let v = UInt32(bitPattern: s)
         let bytes: [UInt8] = [
             UInt8((v >> 24) & 0xff),

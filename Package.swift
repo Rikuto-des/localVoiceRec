@@ -100,6 +100,11 @@ let package = Package(
             path: "Tests/AudioCaptureTests"
         ),
         .testTarget(
+            name: "AudioTapKitTests",
+            dependencies: ["AudioTapKit"],
+            path: "Tests/AudioTapKitTests"
+        ),
+        .testTarget(
             name: "TranscriptionKitTests",
             dependencies: ["TranscriptionKit", "Contracts"],
             path: "Tests/TranscriptionKitTests"

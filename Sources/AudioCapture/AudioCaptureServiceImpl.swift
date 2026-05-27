@@ -3,6 +3,7 @@ import AVFAudio
 import AVFoundation
 import Contracts
 import AudioTapKit
+import os.log
 
 /// 本番 `AudioCaptureService` 実装。
 ///
@@ -14,11 +15,20 @@ import AudioTapKit
 ///   ハードウェアは止めない (PCM はリングバッファに流れ続けるが、writer をスキップする)。
 /// - 失敗時のクリーンアップを徹底し、状態が崩れたまま再 start できなくならないようにする。
 ///
+/// ## レベルメーター (S10-A)
+/// - 各 consumer Task は `WriterSink.write` → `LevelAccumulator.add(buffer)` も呼ぶ。
+/// - 別の emit Task が 100ms ごとに mic / system の RMS / Peak をスナップショットし、
+///   `levelContinuation.yield(...)` する。`Task.sleep` ベースなので録音停止時に cancel する。
+///
 /// ## 並行性
 /// - actor 自体は `Sendable` (Swift 6)。`MicCapture` / `SystemAudioTap` は `@unchecked Sendable`。
 /// - consumer Task は `Task.detached` で起こし、actor の状態を直接触らずに自己完結する。
 ///   writer / pause flag は box 経由で共有 (`WriterSink`)。
 public actor AudioCaptureServiceImpl: AudioCaptureService {
+
+    // MARK: - Logger
+
+    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio")
 
     // MARK: - State stream
 
@@ -189,15 +199,40 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             throw err
         }
 
-        // ── consumer Tasks (detached)
-        let micSink = WriterSink(writer: micWriter)
-        let systemSink = WriterSink(writer: systemWriter)
+        // ── consumer Tasks (detached) と LevelAccumulator
+        let micAccumulator = LevelAccumulator()
+        let systemAccumulator = LevelAccumulator()
+        let micSink = WriterSink(writer: micWriter, accumulator: micAccumulator)
+        let systemSink = WriterSink(writer: systemWriter, accumulator: systemAccumulator)
 
         let micTask = Task.detached(priority: .userInitiated) {
             await Self.consume(stream: micStream, sink: micSink)
         }
         let systemTask = Task.detached(priority: .userInitiated) {
             await Self.consume(stream: systemStream, sink: systemSink)
+        }
+
+        // ── Level emit task: 100ms ごとに RMS/Peak スナップショットを yield
+        let levelCont = self.levelContinuation
+        let startedAtCopy = now
+        let levelEmitTask = Task.detached(priority: .utility) {
+            // 開始ログ
+            Self.logger.debug("level emit task started")
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                if Task.isCancelled { break }
+                let (mr, mp) = micAccumulator.snapshot()
+                let (sr, sp) = systemAccumulator.snapshot()
+                let elapsed = Date().timeIntervalSince(startedAtCopy)
+                levelCont.yield(AudioLevelSnapshot(
+                    elapsedSec: elapsed,
+                    micRMS: mr,
+                    micPeak: mp,
+                    systemRMS: sr,
+                    systemPeak: sp
+                ))
+            }
+            Self.logger.debug("level emit task ended")
         }
 
         // ── ActiveSession を構築
@@ -215,8 +250,10 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             micSink: micSink,
             systemSink: systemSink,
             micTask: micTask,
-            systemTask: systemTask
+            systemTask: systemTask,
+            levelEmitTask: levelEmitTask
         )
+        Self.logger.info("AudioCaptureServiceImpl.start: micFormat=\(String(describing: mic.captureFormat)) sysFormat=\(String(describing: tap.captureFormat))")
         transition(to: .recording(startedAt: now))
         return session
     }
@@ -265,6 +302,9 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         }
         transition(to: .finalizing)
 
+        // level emit task は先に止める (空 snapshot の余分な yield を防ぐ)
+        active.levelEmitTask.cancel()
+
         // ハードウェア停止 → ストリームの finish が伝搬 → consumer Task が自然終了する。
         active.mic.stop()
         active.tap.stop()
@@ -272,6 +312,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         // consumer の終了待ち
         _ = await active.micTask.value
         _ = await active.systemTask.value
+        _ = await active.levelEmitTask.value
 
         // writer を明示 close (AVAudioFile は ARC で flush するが、シーケンスポイントとして残す)
         active.micSink.close()
@@ -360,6 +401,7 @@ private struct ActiveSession {
     let systemSink: WriterSink
     let micTask: Task<Void, Never>
     let systemTask: Task<Void, Never>
+    let levelEmitTask: Task<Void, Never>
 }
 
 // MARK: - WriterSink
@@ -368,14 +410,18 @@ private struct ActiveSession {
 ///
 /// `NSLock` で writer の write/close と pause フラグを保護する。
 /// pause 中は write を no-op にする (ハードウェアは止めず PCM だけ捨てる)。
+/// `LevelAccumulator` への投入は **pause 中も行う** (UI のレベルメーターは録音中も
+/// pause 中も「実音」を見せたい想定。ファイル書き込みのみ止める)。
 final class WriterSink: @unchecked Sendable {
     private let lock = NSLock()
     private var writer: WAVFileWriter?
     private var paused: Bool = false
     private var closed: Bool = false
+    private let accumulator: LevelAccumulator
 
-    init(writer: WAVFileWriter) {
+    init(writer: WAVFileWriter, accumulator: LevelAccumulator) {
         self.writer = writer
+        self.accumulator = accumulator
     }
 
     func setPaused(_ value: Bool) {
@@ -385,6 +431,9 @@ final class WriterSink: @unchecked Sendable {
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
+        // レベル計算は pause 中も継続 (UI 用)
+        accumulator.add(buffer)
+
         lock.lock()
         let shouldWrite = !paused && !closed
         let w = writer
@@ -405,5 +454,142 @@ final class WriterSink: @unchecked Sendable {
         writer = nil
         lock.unlock()
         w?.close()
+    }
+}
+
+// MARK: - LevelAccumulator
+
+/// AVAudioPCMBuffer から RMS / Peak を累積計算するための、スレッドセーフな小さな箱。
+///
+/// - producer: WriterSink.write (consumer Task = detached priority .userInitiated)
+/// - consumer: level emit Task (100ms ごとに snapshot を取って reset)
+///
+/// 設計:
+/// - `sumSq` を `Double` で累積 (Float32 で 100ms 分加算すると精度が落ちるため)
+/// - 全 channel をミックスした「総合 RMS」を計算する (mic は 1ch、system は 2ch でも平均)
+/// - snapshot は (rms, peak) の線形振幅。dB 換算は呼び出し側 (Contract で定義済)
+final class LevelAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var sumSq: Double = 0
+    private var sampleCount: Int = 0
+    private var peakValue: Float = 0
+
+    /// AVAudioPCMBuffer からサンプルを読み取り、二乗和 / sample 数 / peak を更新する。
+    /// Float32 / Int16 / Int32 をサポート。それ以外は no-op (リスクとしてログだけ出す)。
+    func add(_ buffer: AVAudioPCMBuffer) {
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return }
+        let channels = Int(buffer.format.channelCount)
+        guard channels > 0 else { return }
+
+        var localSumSq: Double = 0
+        var localPeak: Float = 0
+        var localCount: Int = 0
+
+        switch buffer.format.commonFormat {
+        case .pcmFormatFloat32:
+            if buffer.format.isInterleaved {
+                // 1 本のバッファに全 ch interleave
+                if let base = buffer.floatChannelData?[0] {
+                    let total = frames * channels
+                    for i in 0..<total {
+                        let v = base[i]
+                        let a = abs(v)
+                        if a > localPeak { localPeak = a }
+                        localSumSq += Double(v) * Double(v)
+                    }
+                    localCount = total
+                }
+            } else {
+                // planar: ch ごとに別ポインタ
+                if let chs = buffer.floatChannelData {
+                    for ch in 0..<channels {
+                        let p = chs[ch]
+                        for i in 0..<frames {
+                            let v = p[i]
+                            let a = abs(v)
+                            if a > localPeak { localPeak = a }
+                            localSumSq += Double(v) * Double(v)
+                        }
+                    }
+                    localCount = frames * channels
+                }
+            }
+        case .pcmFormatInt16:
+            let scale: Float = 1.0 / 32768.0
+            if buffer.format.isInterleaved {
+                if let base = buffer.int16ChannelData?[0] {
+                    let total = frames * channels
+                    for i in 0..<total {
+                        let v = Float(base[i]) * scale
+                        let a = abs(v)
+                        if a > localPeak { localPeak = a }
+                        localSumSq += Double(v) * Double(v)
+                    }
+                    localCount = total
+                }
+            } else if let chs = buffer.int16ChannelData {
+                for ch in 0..<channels {
+                    let p = chs[ch]
+                    for i in 0..<frames {
+                        let v = Float(p[i]) * scale
+                        let a = abs(v)
+                        if a > localPeak { localPeak = a }
+                        localSumSq += Double(v) * Double(v)
+                    }
+                }
+                localCount = frames * channels
+            }
+        case .pcmFormatInt32:
+            let scale: Float = 1.0 / 2147483648.0
+            if buffer.format.isInterleaved {
+                if let base = buffer.int32ChannelData?[0] {
+                    let total = frames * channels
+                    for i in 0..<total {
+                        let v = Float(base[i]) * scale
+                        let a = abs(v)
+                        if a > localPeak { localPeak = a }
+                        localSumSq += Double(v) * Double(v)
+                    }
+                    localCount = total
+                }
+            } else if let chs = buffer.int32ChannelData {
+                for ch in 0..<channels {
+                    let p = chs[ch]
+                    for i in 0..<frames {
+                        let v = Float(p[i]) * scale
+                        let a = abs(v)
+                        if a > localPeak { localPeak = a }
+                        localSumSq += Double(v) * Double(v)
+                    }
+                }
+                localCount = frames * channels
+            }
+        default:
+            // 未サポートのフォーマット (Float64 / otherFormat)。レベルは無視。
+            return
+        }
+
+        lock.lock()
+        sumSq += localSumSq
+        sampleCount += localCount
+        if localPeak > peakValue { peakValue = localPeak }
+        lock.unlock()
+    }
+
+    /// 現在の累積から (rms, peak) を計算して返し、内部状態をリセットする。
+    /// 累積が空の場合は (0, 0) を返す (UI 側で「無音」として扱える)。
+    func snapshot() -> (rms: Float, peak: Float) {
+        lock.lock()
+        let s = sumSq
+        let n = sampleCount
+        let p = peakValue
+        sumSq = 0
+        sampleCount = 0
+        peakValue = 0
+        lock.unlock()
+        guard n > 0 else { return (0, 0) }
+        let rms = Float((s / Double(n)).squareRoot())
+        return (rms, p)
     }
 }
