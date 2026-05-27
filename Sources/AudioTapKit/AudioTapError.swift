@@ -13,6 +13,8 @@ public enum AudioTapError: Error, CustomStringConvertible {
     case engineStartFailed(String)
     case tapUIDUnavailable(OSStatus)
     case streamFormatUnavailable(OSStatus)
+    case defaultOutputDeviceUnavailable(OSStatus)
+    case outputDeviceUIDUnavailable(OSStatus)
     case fileCreationFailed(String)
     case alreadyRunning
     case notRunning
@@ -35,6 +37,10 @@ public enum AudioTapError: Error, CustomStringConvertible {
             return "Tap UID property read failed: OSStatus=\(s) (\(Self.fourCC(s)))"
         case .streamFormatUnavailable(let s):
             return "Stream format property read failed: OSStatus=\(s) (\(Self.fourCC(s)))"
+        case .defaultOutputDeviceUnavailable(let s):
+            return "Default output device read failed: OSStatus=\(s) (\(Self.fourCC(s)))"
+        case .outputDeviceUIDUnavailable(let s):
+            return "Output device UID read failed: OSStatus=\(s) (\(Self.fourCC(s)))"
         case .fileCreationFailed(let m):
             return "WAV file creation failed: \(m)"
         case .alreadyRunning:

@@ -73,6 +73,11 @@ public final class SystemAudioTap: @unchecked Sendable {
     private var isRunning = false
     private let lock = NSLock()
 
+    /// A5: デフォルト出力デバイス切替監視用 listener block。`start()` で登録、`stop()` で解除する。
+    /// 現状は警告ログのみ。aggregate 再構築は Phase D 以降。
+    private var defaultOutputDeviceListener: AudioObjectPropertyListenerBlock?
+    private var defaultOutputDeviceListenerInstalled = false
+
     /// Ring buffer 容量。48kHz × stereo × Float32 = 384 KB/sec。
     /// 2 秒分 ≒ 768 KB を確保する (一時的なジッタ吸収用)。
     private let ring: SPSCByteRingBuffer
@@ -133,8 +138,11 @@ public final class SystemAudioTap: @unchecked Sendable {
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         description.name = "localVoiceRec-systemTap"
         description.isPrivate = true   // Audio MIDI Setup に出さない
-        // 明示的に CATapUnmuted (=0)。default のはずだが念のため。
-        description.muteBehavior = CATapMuteBehavior(rawValue: 0) ?? description.muteBehavior
+        // A3: 空 exclude 配列 + isExclusive=true で「除外プロセスゼロ＝全プロセスをタップ」の
+        // 意味を仕様レベルで明確化。AudioCap サンプル準拠。
+        description.isExclusive = true
+        // A4: 明示的に `.unmuted`。raw 0 ではなく enum で書くことで意図を明示。
+        description.muteBehavior = .unmuted
         // tap の UUID を明示生成 (auto-restore に影響する可能性があるため固定値を避ける)
         description.uuid = UUID()
 
@@ -170,16 +178,35 @@ public final class SystemAudioTap: @unchecked Sendable {
         // AudioDeviceStart は「tap が最初の音を受け取るまで」待つ → silent IOProc 呼び出しが
         // 開始されず、無音バッファを書き続ける問題を緩和する。
         // (private aggregate device 必須。`kAudioAggregateDeviceIsPrivateKey: 1` と併用)
+        //
+        // A2: aggregate device に「どの出力デバイスに対する tap か」を紐付ける必要がある。
+        //   `kAudioAggregateDeviceMainSubDeviceKey` と `kAudioAggregateDeviceSubDeviceListKey`
+        //   を欠くと、tap は「出力先未確定」となり実機で全ゼロバッファになる (確定原因)。
+        //   AudioCap サンプル準拠で、現在のデフォルト出力デバイスを取得して紐付ける。
+        let outputUID = try Self.readDefaultOutputDeviceUID()
+        Self.logger.info("Default output device UID: \(outputUID as String, privacy: .public)")
+
+        // A1: `kAudioSubTapUIDKey` の値は **tap オブジェクトの UID (kAudioTapPropertyUID で取得した
+        //   CFString)** ではなく、`CATapDescription.uuid.uuidString` を渡す必要がある。
+        //   Apple 公式サンプル AudioCap/ProcessTap.swift 準拠。これを取り違えると IOProc は
+        //   呼ばれるが常に全ゼロバッファになる (確定原因)。
+        let subTapUIDString = description.uuid.uuidString
+        Self.logger.info("Sub-tap UID (description.uuid): \(subTapUIDString, privacy: .public) — tap kAudioTapPropertyUID was: \(tapUID as String, privacy: .public)")
+
         let aggUID = UUID().uuidString
         let aggDesc: [String: Any] = [
             kAudioAggregateDeviceNameKey as String: "localVoiceRec-aggregate",
             kAudioAggregateDeviceUIDKey as String: aggUID,
+            kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
             kAudioAggregateDeviceIsPrivateKey as String: 1,
             kAudioAggregateDeviceIsStackedKey as String: 0,
             kAudioAggregateDeviceTapAutoStartKey as String: 1,
+            kAudioAggregateDeviceSubDeviceListKey as String: [
+                [kAudioSubDeviceUIDKey as String: outputUID]
+            ],
             kAudioAggregateDeviceTapListKey as String: [
                 [
-                    kAudioSubTapUIDKey as String: tapUID as String,
+                    kAudioSubTapUIDKey as String: subTapUIDString,
                     kAudioSubTapDriftCompensationKey as String: 0,
                     kAudioSubTapExtraInputLatencyKey as String: 0,
                 ] as [String: Any]
@@ -281,8 +308,64 @@ public final class SystemAudioTap: @unchecked Sendable {
         }
         Self.logger.info("AudioDeviceStart ok — capturing")
 
+        // A5: デフォルト出力デバイス切替の監視 (警告ログのみ)。
+        Self.installDefaultOutputDeviceListener(on: self)
+
         isRunning = true
         return stream
+    }
+
+    /// A5 helper: `kAudioHardwarePropertyDefaultOutputDevice` の変化を監視。
+    /// 録音中にユーザーが出力先 (Bluetooth 等) を切り替えると aggregate が古いデバイスのまま
+    /// 残り無音化するため、警告ログを残す。aggregate 再構築は Phase D 以降。
+    private static func installDefaultOutputDeviceListener(on tap: SystemAudioTap) {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let block: AudioObjectPropertyListenerBlock = { _, _ in
+            // 新しい UID を取得して比較ログ
+            do {
+                let newUID = try Self.readDefaultOutputDeviceUID()
+                Self.logger.warning("Default output device changed → UID=\(newUID, privacy: .public). aggregate device は古い出力に紐付いたままのため、システム音声が無音化する可能性があります。録音を停止 → 再開してください (Phase D で自動再構築予定)。")
+            } catch {
+                Self.logger.warning("Default output device changed, but UID read failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+        let st = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &addr,
+            nil,
+            block
+        )
+        if st == noErr {
+            tap.defaultOutputDeviceListener = block
+            tap.defaultOutputDeviceListenerInstalled = true
+            Self.logger.info("Default output device listener installed")
+        } else {
+            Self.logger.warning("AudioObjectAddPropertyListenerBlock(defaultOutputDevice) failed: status=\(st) — 出力切替検知は無効です")
+        }
+    }
+
+    private static func removeDefaultOutputDeviceListener(on tap: SystemAudioTap) {
+        guard tap.defaultOutputDeviceListenerInstalled, let block = tap.defaultOutputDeviceListener else { return }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let st = AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &addr,
+            nil,
+            block
+        )
+        if st != noErr {
+            Self.logger.warning("AudioObjectRemovePropertyListenerBlock(defaultOutputDevice) failed: status=\(st)")
+        }
+        tap.defaultOutputDeviceListener = nil
+        tap.defaultOutputDeviceListenerInstalled = false
     }
 
     /// 停止 + クリーンアップ。
@@ -306,6 +389,9 @@ public final class SystemAudioTap: @unchecked Sendable {
         if callCount >= 10 && nonZeroCount == 0 && recvBytes > 0 {
             Self.logger.error("SystemAudioTap: \(callCount) IOProc calls received \(recvBytes) bytes but ALL ZERO. 強い疑い → kTCCServiceAudioCapture (システム音声録音 TCC) が拒否されている。システム設定 → プライバシーとセキュリティ → 「システム音声録音」(または旧名 “マイク” 配下) でアプリの許可状況を確認してください。")
         }
+
+        // A5: listener を先に解除 (デバイス破棄前)
+        Self.removeDefaultOutputDeviceListener(on: self)
 
         if let procID = ioProcID {
             AudioDeviceStop(aggregateDeviceID, procID)
@@ -343,6 +429,44 @@ public final class SystemAudioTap: @unchecked Sendable {
             throw AudioTapError.tapUIDUnavailable(status)
         }
         return uid.takeRetainedValue()
+    }
+
+    /// 現在のデフォルト出力デバイスの UID を取得する。
+    ///
+    /// aggregate device 構築時に `kAudioAggregateDeviceMainSubDeviceKey` と
+    /// `kAudioAggregateDeviceSubDeviceListKey` で紐付けるために必要。
+    /// 失敗時は silent fail させずに throw する (silent failure 防止)。
+    private static func readDefaultOutputDeviceUID() throws -> String {
+        // 1) デフォルト出力デバイスの AudioObjectID
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioObjectID(kAudioObjectUnknown)
+        var size: UInt32 = UInt32(MemoryLayout<AudioObjectID>.size)
+        let st = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &deviceID
+        )
+        guard st == noErr, deviceID != kAudioObjectUnknown else {
+            throw AudioTapError.defaultOutputDeviceUnavailable(st)
+        }
+
+        // 2) そのデバイスの UID (CFString)
+        var uidAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var uid: Unmanaged<CFString>?
+        var uidSize: UInt32 = UInt32(MemoryLayout<CFString?>.size)
+        let st2 = withUnsafeMutablePointer(to: &uid) { ptr in
+            AudioObjectGetPropertyData(deviceID, &uidAddr, 0, nil, &uidSize, ptr)
+        }
+        guard st2 == noErr, let uid else {
+            throw AudioTapError.outputDeviceUIDUnavailable(st2)
+        }
+        return uid.takeRetainedValue() as String
     }
 
     private static func readTapStreamFormat(tapID: AudioObjectID) throws -> AudioStreamBasicDescription {

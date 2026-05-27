@@ -725,6 +725,10 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             return .processTapCreateFailed(status: s)
         case .streamFormatUnavailable(let s):
             return .processTapCreateFailed(status: s)
+        case .defaultOutputDeviceUnavailable(let s):
+            return .aggregateDeviceCreateFailed(status: s)
+        case .outputDeviceUIDUnavailable(let s):
+            return .aggregateDeviceCreateFailed(status: s)
         case .fileCreationFailed(let m):
             return .fileWriteFailed(message: m)
         case .alreadyRunning:
