@@ -96,20 +96,23 @@
  (2ch取得)   (ローカル)      (ローカル3B)
 ```
 ### 7.2 データフロー
-1. **収音** → マイク（自分）＋システム音声（相手）を 2 チャンネルで取得し、ローカルに音声ファイルとして保存。
-2. **文字起こし** → 各チャンネルを SpeechAnalyzer に渡し、タイムスタンプ＋話者区別付きテキストを生成。
-3. **要約** → 文字起こしテキストを Foundation Models に渡し、構造化要約を生成。
-4. **保存** → 音声 / 文字起こし / 要約をローカルに保存。
-> **重要:** このフローのどの段階でもネットワークを経由しない。
+1. **収音** → マイク（自分・AVAudioEngine + AUVoiceProcessing IO で AEC/NS/AGC 適用）＋システム音声（相手・Core Audio process tap、SPSC ロックフリーリングバッファ経由）を 2 チャンネルで取得し、ALAC で `.m4a` に保存。
+2. **1-pass fan-out** → 1 つの PCM バッファを (a) ALAC 書き込み、(b) UI 用レベルメーター、(c) SpeechAnalyzer への投入、の 3 経路に同期 fan-out。バッファコピーは増やさない。
+3. **録音中文字起こし** → 各チャンネルを SpeechAnalyzer の `transcribeLive` に流し、isFinal セグメントを逐次反映。録音停止と同時に確定済みテキストが揃う。
+4. **要約** → 文字起こしテキストを Foundation Models（`@Generable`）に渡し、構造化要約を生成。
+5. **保存** → 音声 / 文字起こし / 要約をローカルに保存。
+> **重要:** このフローのどの段階でもネットワークを経由しない。ネットワーク entitlement を付与していないため、OS が外部通信を物理的に拒否する。
 ---
 ## 8. 技術スタック
 | レイヤー | 採用技術 | 備考 |
 |---|---|---|
 | 言語 | Swift | ネイティブ必須（後述の Apple フレームワークが Swift 前提） |
 | UI | SwiftUI（`MenuBarExtra`） | メニューバー常駐 |
-| マイク収音 | AVAudioEngine | 標準 |
-| システム音声収音 | Core Audio process tap（`AudioHardwareCreateProcessTap` / `CATapDescription`）または ScreenCaptureKit 音声ストリーム | **最大の技術的難所**。2ch のサンプルレート・タイムスタンプ同期に注意。 |
-| 文字起こし | SpeechAnalyzer | macOS 26 標準・オンデバイス |
+| マイク収音 | AVAudioEngine + AUVoiceProcessing IO (`setVoiceProcessingEnabled(true)`) | OS 標準の AEC / NS / AGC を適用 |
+| システム音声収音 | Core Audio process tap（`AudioHardwareCreateProcessTap` / `CATapDescription`）+ SPSC ロックフリーリングバッファ | 2ch のサンプルレート・タイムスタンプ同期に注意。 |
+| 録音形式 | ALAC (Apple Lossless) を `.m4a` コンテナで保存 | PCM WAV 比 50〜70% のサイズ、可逆 |
+| ストリーム配信 | `WriterSink` による 1-pass 同期 fan-out (writer / level / live ASR) | バッファコピーを増やさない |
+| 文字起こし | SpeechAnalyzer (`transcribeLive` で録音中ストリーミング) | macOS 26 標準・オンデバイス |
 | 要約 | Foundation Models | オンデバイス約3B・`@Generable` で構造化出力 |
 | 永続化 | SwiftData または Core Data | サンドボックス内ローカル |
 ---

@@ -4,6 +4,17 @@
 
 **音声・文字起こし・要約のすべてを端末内で処理し、データを一切外部に送信しない。** ネットワーク権限を持たないため、技術的に外部通信できません。
 
+## ハイライト
+
+- **AEC + NS + AGC**: マイク側に AUVoiceProcessing IO を有効化し、OS 標準のエコーキャンセル・ノイズ抑制・自動ゲイン調整を適用 (`Sources/AudioTapKit/MicCapture.swift`)
+- **ALAC 可逆圧縮**: 録音は Apple Lossless を `.m4a` コンテナで保存。PCM WAV 比でファイルサイズが概ね 50〜70% (`Sources/AudioTapKit/WAVFileWriter.swift`)
+- **1-pass fan-out**: 1 つの PCM バッファを「ALAC 書き込み / レベルメーター / 録音中文字起こし」に同期 fan-out。バッファコピーを増やさない (`Sources/AudioCapture/AudioCaptureServiceImpl.swift` の `WriterSink`)
+- **録音と同時進行の文字起こし**: SpeechAnalyzer の `transcribeLive` API に流し込み、isFinal 確定セグメントを逐次返す (`Sources/TranscriptionKit/SpeechAnalyzerService.swift`)
+- **SPSC ロックフリーリングバッファ**: System Audio 側で採用 (`Sources/AudioTapKit/SPSCByteRingBuffer.swift`)
+- **中断ハンドリング**: スリープ / オーディオ HW 切替 / engine 構成変更を観測して安全停止 (`AudioCaptureServiceImpl.handleInterruption`)
+- **小さい配布物**: .app 約 1.5 MB / DMG 約 1.0 MB / 実行ファイル 約 1.2 MB (`-Osize` + LTO + strip)
+- **外部依存ゼロ**: OS 標準フレームワークのみ。ネットワーク entitlement は付与していない
+
 ## 要件
 
 - macOS 26 (Tahoe) 以降
@@ -15,9 +26,11 @@
 |---|---|
 | 言語 | Swift |
 | UI | SwiftUI（MenuBarExtra） |
-| 収音 | AVAudioEngine + Core Audio process tap |
-| 文字起こし | SpeechAnalyzer（macOS 26 標準） |
-| 要約 | Foundation Models（オンデバイス） |
+| マイク収音 | AVAudioEngine + AUVoiceProcessing IO (AEC/NS/AGC) |
+| システム音声収音 | Core Audio process tap + SPSC ロックフリーリングバッファ |
+| 録音形式 | ALAC (Apple Lossless / .m4a) |
+| 文字起こし | SpeechAnalyzer（macOS 26 標準・録音中ストリーミング対応） |
+| 要約 | Foundation Models（オンデバイス・`@Generable`） |
 | 永続化 | SwiftData |
 
 ## ドキュメント

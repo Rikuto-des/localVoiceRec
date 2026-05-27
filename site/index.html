@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>localVoiceRec — 会議録音と議事録を、Mac の中だけで。</title>
-  <meta name="description" content="マイクとシステム音声を 2 チャンネルで収録し、文字起こしと要約までデバイス内で完結。外部送信ゼロの macOS アプリ。" />
+  <meta name="description" content="約 1MB の DMG、外部依存ゼロ、ネットワーク権限なし。OS 標準の AEC とオンデバイス文字起こし／要約で、録音から議事録までを Mac の中だけで完結させる macOS アプリ。" />
   <meta name="theme-color" content="#0B0820" />
   <meta property="og:title" content="localVoiceRec" />
-  <meta property="og:description" content="会議録音から議事録まで、すべてデバイスの中で。" />
+  <meta property="og:description" content="約 1MB の DMG。AEC・文字起こし・要約まで、すべてデバイスの中で。" />
   <meta property="og:type" content="website" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
@@ -58,8 +58,8 @@
     <p class="hero-eyebrow">localVoiceRec</p>
     <h1>会議録音と議事録を、<br />Mac の中だけで。</h1>
     <p class="hero-lead">
-      マイクとシステム音声を 2 チャンネルで収録し、<br />
-      文字起こしと構造化要約まで、ネットワークを使わずに完了させます。
+      約 1MB の DMG に、OS 標準の AEC、録音と同時進行の文字起こし、<br />
+      オンデバイス要約まで。外部依存ゼロ、ネットワーク権限なし。
     </p>
     <div class="hero-cta">
       <a class="btn-pill btn-pill-primary" href="#download">
@@ -82,7 +82,7 @@
     <p class="feature-eyebrow">In the app</p>
     <h2>すべての工程を、ひとつのウィンドウで。</h2>
     <p class="feature-lead">
-      録音から、チャンネル別の波形、話者ごとの吹き出し、構造化要約まで。
+      録音中からリアルタイムに伸びる文字起こし、チャンネル別の波形、停止後の構造化要約まで。
       左右に並ぶレイアウトで切り替えなしに完結します。
     </p>
     <figure class="app-shot">
@@ -100,6 +100,7 @@
     <h2>送らない、ではなく、<em>送れない</em>。</h2>
     <p class="feature-lead">
       ネットワーク権限を持たないため、アプリは外部と通信する経路自体を持ちません。
+      AEC・文字起こし・要約は、いずれも OS 標準フレームワーク内で完結します。
     </p>
     <div class="feature-grid">
       <div class="feature-card">
@@ -124,8 +125,8 @@
           <path d="M8 22 L8 13 L16 8 L24 13 L24 22"/>
           <path d="M12 22 V17 H20 V22"/>
         </svg>
-        <h3>ボット不要のローカル録音</h3>
-        <p>Zoom / Teams / Meet に外部ボットを参加させず、Mac 自身が再生・収音する音声を Core Audio で直接取得します。録音データは端末から一切外に出ません。録音にあたっては、会議参加者への事前の同意取得をお願いします。</p>
+        <h3>ボットを増やさないローカル録音</h3>
+        <p>Zoom / Teams / Meet に外部ボットを参加させる代わりに、Mac 自身が再生・収音する音声を Core Audio process tap で取得します。録音データは端末から一切外に出ません。会議参加者への録音同意の取得は、利用者の責任で事前に行ってください。</p>
       </div>
     </div>
   </div>
@@ -169,12 +170,12 @@
       <li>
         <p class="step-num">01 — 収録</p>
         <h3>マイクとシステム音声を別チャンネルで。</h3>
-        <p>自分の声は <code>AVAudioEngine</code>、相手の声は Core Audio の process tap。話者分離は AI 推定ではなくチャンネルで確定するため、誤判定がありません。</p>
+        <p>自分の声は <code>AVAudioEngine</code> + AUVoiceProcessing IO で OS 標準の AEC・ノイズ抑制・自動ゲイン調整を適用。相手の声は Core Audio の process tap で取得し、System 側はロックフリーの SPSC リングバッファで受け取ります。話者分離は AI 推定ではなくチャンネルで確定するため、誤判定が起きません。</p>
       </li>
       <li>
-        <p class="step-num">02 — 文字起こし</p>
-        <h3>2 系統を独立に書き起こし。</h3>
-        <p>各チャンネルを SpeechAnalyzer に流し、タイムスタンプ付きで書き起こします。日本語・英語に対応。</p>
+        <p class="step-num">02 — 録音と同時進行の文字起こし</p>
+        <h3>同じ音声バッファを 3 経路に同時配信。</h3>
+        <p>1 つの PCM バッファを、(a) ALAC ファイル書き込み、(b) 波形メーター、(c) SpeechAnalyzer への投入、に同期 fan-out します。バッファのコピーを増やさない 1-pass 構造のため、録音中から日本語・英語の文字起こしが伸びていき、停止と同時に確定済みテキストが揃います。</p>
       </li>
       <li>
         <p class="step-num">03 — 構造化要約</p>
@@ -231,14 +232,18 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 <section class="feature alt">
   <div class="wrap">
     <p class="feature-eyebrow">Requirements</p>
-    <h2>動作環境</h2>
+    <h2>動作環境とサイズ</h2>
     <dl class="spec">
       <div><dt>OS</dt><dd>macOS 26 Tahoe 以降</dd></div>
       <div><dt>CPU</dt><dd>Apple Silicon (M1 以降)</dd></div>
       <div><dt>メモリ</dt><dd>8 GB 以上を推奨</dd></div>
       <div><dt>Apple Intelligence</dt><dd>有効化が必要</dd></div>
-      <div><dt>ネットワーク</dt><dd>不要</dd></div>
+      <div><dt>ネットワーク</dt><dd>不要 (entitlement 未付与)</dd></div>
       <div><dt>権限</dt><dd>マイク／システム音声録音</dd></div>
+      <div><dt>DMG サイズ</dt><dd>約 1.0 MB</dd></div>
+      <div><dt>.app サイズ</dt><dd>約 1.5 MB</dd></div>
+      <div><dt>外部依存</dt><dd>なし (OS 標準フレームワークのみ)</dd></div>
+      <div><dt>録音形式</dt><dd>ALAC (Apple Lossless / .m4a)</dd></div>
     </dl>
   </div>
 </section>
@@ -274,10 +279,12 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 
       <div class="download-note">
         <strong>v0.1.0 — 初回リリース</strong><br />
-        ・マイク + システム音声の 2 チャンネル録音<br />
-        ・SpeechAnalyzer によるオンデバイス文字起こし<br />
+        ・マイク + システム音声の 2 チャンネル録音 (ALAC / .m4a で保存)<br />
+        ・AUVoiceProcessing IO による AEC・ノイズ抑制・AGC<br />
+        ・録音と同時進行のオンデバイス文字起こし (SpeechAnalyzer)<br />
         ・Foundation Models によるオンデバイス構造化要約<br />
         ・録音一覧 / 詳細表示 / Markdown・テキストエクスポート<br />
+        ・スリープ / オーディオ HW 切替 / engine 構成変更を検知して安全停止<br />
         ・ネットワーク権限ゼロ — App Sandbox + Developer ID 署名 + Notarization 済み
       </div>
     </div>
@@ -329,11 +336,30 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
         </div>
       </details>
       <details>
-        <summary>録音データはどこに保存される？</summary>
+        <summary>録音データはどこに保存される？ ファイル形式は？</summary>
         <div class="answer">
           アプリのサンドボックス内、
           <code>~/Library/Containers/com.example.localVoiceRec/</code>
-          の下です。アプリから個別／一括削除でき、削除時はファイル実体も同時に消去されます。
+          の下に保存されます。形式は ALAC (Apple Lossless) を <code>.m4a</code> コンテナに格納。
+          PCM の WAV と比べてファイルサイズは概ね 50〜70% になり、可逆圧縮のため音質劣化はありません。
+          アプリから個別／一括削除でき、削除時はファイル実体も同時に消去されます。
+        </div>
+      </details>
+      <details>
+        <summary>録音中のマイクへの回り込み (スピーカーから出た相手の声) は文字起こしを汚さない？</summary>
+        <div class="answer">
+          マイク収音は <code>AVAudioEngine</code> の入力ノードに対して
+          <code>setVoiceProcessingEnabled(true)</code> を有効化し、macOS の AUVoiceProcessing IO を経由します。
+          OS 標準の AEC (エコーキャンセル)、ノイズ抑制、自動ゲイン調整がマイク側にかかるため、
+          ヘッドフォン未使用時の回り込みは大きく抑えられます。
+        </div>
+      </details>
+      <details>
+        <summary>録音が終わってから文字起こしを待つ必要がある？</summary>
+        <div class="answer">
+          ありません。1 つの音声バッファを「ALAC への書き込み」「波形メーター」「SpeechAnalyzer への投入」に
+          同期 fan-out する 1-pass 構造のため、録音中からリアルタイムに文字起こしが伸びていきます。
+          停止と同時に確定済みのテキストが揃った状態になり、続けて要約を生成します。
         </div>
       </details>
       <details>
