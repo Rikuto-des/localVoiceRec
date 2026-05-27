@@ -222,6 +222,9 @@ struct AudioTapPoC {
         info("Drift mic vs real:  \(String(format: "%+.3f", micSeconds - elapsedReal)) s")
         info("Drift sys vs real:  \(String(format: "%+.3f", sysSeconds - elapsedReal)) s")
         info("Tap dropped pushes (ring full): \(tap.droppedPushCount)")
+        info("Tap IOProc calls:                \(tap.ioProcCallCount)")
+        info("Tap non-zero buffers observed:   \(tap.nonZeroBufferCount)")
+        info("Tap bytes received total:        \(tap.receivedBytesTotal)")
         info("CPU: \(String(format: "%.3f", cpuDelta)) s used over \(String(format: "%.3f", elapsedReal)) s wall (\(String(format: "%.1f", cpuPct))%)")
         info("Memory: rss before=\(rss0) bytes, after=\(rss1) bytes, peak-ish delta=\(rss1 - rss0)")
     }

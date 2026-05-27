@@ -3,6 +3,7 @@ import CoreAudio
 import AudioToolbox
 import AVFAudio
 import Synchronization
+import os.log
 
 /// Core Audio process tap + aggregate device によるシステム音声収録。
 ///
@@ -28,12 +29,31 @@ import Synchronization
 /// - 初回 `AudioDeviceStart` で OS が「システム音声録音」TCC プロンプトを表示する。
 /// - 拒否された場合、`AudioDeviceStart` が non-zero status を返す
 ///   (具体的な status 値は **未確定**)。
+///
+/// ## 既知の落とし穴 (S10-A で実機調査)
+/// - **silent buffers**: IOProc は呼ばれるが mDataByteSize=0 / 全ゼロのケース。
+///   原因として最も多いのが TCC 権限の silent denial。`recvCount` / `nonZeroBufferCount` /
+///   `recvBytesTotal` のカウンタで観測する。
+/// - **CATapDescription の muteBehavior**: 明示的に `.unmuted` (=0) に設定する。
+///   サイレント再生されると system 音は耳には聞こえるが tap に届く前にミュートされる可能性。
+/// - **aggregate のキー**: `kAudioAggregateDeviceTapAutoStartKey` を有効化すると、
+///   tap が「最初に音を受け取るまで」AudioDeviceStart が待ってくれる。
 public final class SystemAudioTap: @unchecked Sendable {
+
+    // MARK: - Logger
+    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio")
 
     // MARK: - Public
 
     public private(set) var captureFormat: AVAudioFormat
     public var droppedPushCount: Int { ring.droppedPushCount }
+
+    /// IOProc 呼び出し回数 (デバッグ観測値)。
+    public var ioProcCallCount: Int { _ioProcCallCount.value.load(ordering: .relaxed) }
+    /// IOProc が「中身が全部ゼロでないバッファ」を観測した回数 (デバッグ観測値)。
+    public var nonZeroBufferCount: Int { _nonZeroBufferCount.value.load(ordering: .relaxed) }
+    /// IOProc が ring に push した合計バイト数 (デバッグ観測値)。
+    public var receivedBytesTotal: Int { _recvBytesTotal.value.load(ordering: .relaxed) }
 
     // MARK: - Internal state
 
@@ -53,6 +73,15 @@ public final class SystemAudioTap: @unchecked Sendable {
     /// IOProc が ring 経由で渡してくる bytes-per-frame (キャッシュ)。
     private var bytesPerFrame: Int = 0
 
+    /// 診断カウンタ。`Synchronization.Atomic` は ~Copyable のため、reference 型の box に包む。
+    /// IOProc は box への参照を保持してインクリメントするだけなので RT-safe。
+    private final class CounterBox: @unchecked Sendable {
+        let value = Atomic<Int>(0)
+    }
+    private let _ioProcCallCount = CounterBox()
+    private let _nonZeroBufferCount = CounterBox()
+    private let _recvBytesTotal = CounterBox()
+
     // MARK: - Init
 
     /// - Throws: 初期 format 解決に失敗した場合 ``AudioTapError``
@@ -70,6 +99,7 @@ public final class SystemAudioTap: @unchecked Sendable {
         self.captureFormat = initialFormat
         self.ringCapacityBytes = 48_000 * 2 * MemoryLayout<Float>.size * 2  // 2 秒
         self.ring = SPSCByteRingBuffer(capacity: ringCapacityBytes)
+        Self.logger.debug("SystemAudioTap.init: ringCapacity=\(self.ringCapacityBytes) bytes")
     }
 
     deinit {
@@ -86,6 +116,8 @@ public final class SystemAudioTap: @unchecked Sendable {
         defer { lock.unlock() }
         if isRunning { throw AudioTapError.alreadyRunning }
 
+        Self.logger.info("SystemAudioTap.start: begin")
+
         // ── Step 1: CATapDescription
         // Swift 上の正式 API 名は `init(stereoGlobalTapButExcludeProcesses:)` (Objective-C の
         // `initStereoGlobalTapButExcludeProcesses:` の refined Swift 名)。
@@ -93,17 +125,23 @@ public final class SystemAudioTap: @unchecked Sendable {
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         description.name = "localVoiceRec-systemTap"
         description.isPrivate = true   // Audio MIDI Setup に出さない
-        description.muteBehavior = CATapMuteBehavior(rawValue: 0) ?? description.muteBehavior  // CATapUnmuted
+        // 明示的に CATapUnmuted (=0)。default のはずだが念のため。
+        description.muteBehavior = CATapMuteBehavior(rawValue: 0) ?? description.muteBehavior
+        // tap の UUID を明示生成 (auto-restore に影響する可能性があるため固定値を避ける)
+        description.uuid = UUID()
 
         var tapID = AudioObjectID(kAudioObjectUnknown)
         let createStatus = AudioHardwareCreateProcessTap(description, &tapID)
         guard createStatus == noErr, tapID != kAudioObjectUnknown else {
+            Self.logger.error("AudioHardwareCreateProcessTap failed: status=\(createStatus) (\(AudioTapError.fourCC(createStatus), privacy: .public))")
             throw AudioTapError.tapCreationFailed(createStatus)
         }
         self.tapID = tapID
+        Self.logger.info("AudioHardwareCreateProcessTap ok: tapID=\(tapID)")
 
         // ── Step 2: Tap UID 取得
         let tapUID = try Self.readTapUID(tapID: tapID)
+        Self.logger.info("Tap UID: \(tapUID as String, privacy: .public)")
 
         // ── Step 3: tap の stream format を取得して captureFormat を確定
         var asbd = try Self.readTapStreamFormat(tapID: tapID)
@@ -116,29 +154,39 @@ public final class SystemAudioTap: @unchecked Sendable {
         }
         self.captureFormat = avFormat
         self.bytesPerFrame = Int(asbd.mBytesPerFrame)
+        Self.logger.info("Tap stream format: sr=\(asbd.mSampleRate) ch=\(asbd.mChannelsPerFrame) bpf=\(asbd.mBytesPerFrame) bitsPerCh=\(asbd.mBitsPerChannel) flags=0x\(String(asbd.mFormatFlags, radix: 16))")
 
         // ── Step 4: Aggregate device を作る (tap を含むため UID と TapList を指定)
+        //
+        // 重要: `kAudioAggregateDeviceTapAutoStartKey: 1` を付けると、
+        // AudioDeviceStart は「tap が最初の音を受け取るまで」待つ → silent IOProc 呼び出しが
+        // 開始されず、無音バッファを書き続ける問題を緩和する。
+        // (private aggregate device 必須。`kAudioAggregateDeviceIsPrivateKey: 1` と併用)
         let aggUID = UUID().uuidString
         let aggDesc: [String: Any] = [
             kAudioAggregateDeviceNameKey as String: "localVoiceRec-aggregate",
             kAudioAggregateDeviceUIDKey as String: aggUID,
             kAudioAggregateDeviceIsPrivateKey as String: 1,
             kAudioAggregateDeviceIsStackedKey as String: 0,
+            kAudioAggregateDeviceTapAutoStartKey as String: 1,
             kAudioAggregateDeviceTapListKey as String: [
                 [
                     kAudioSubTapUIDKey as String: tapUID as String,
-                    kAudioSubTapDriftCompensationKey as String: 0
-                ]
+                    kAudioSubTapDriftCompensationKey as String: 0,
+                    kAudioSubTapExtraInputLatencyKey as String: 0,
+                ] as [String: Any]
             ]
         ]
         var aggID = AudioObjectID(kAudioObjectUnknown)
         let aggStatus = AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &aggID)
         guard aggStatus == noErr, aggID != kAudioObjectUnknown else {
+            Self.logger.error("AudioHardwareCreateAggregateDevice failed: status=\(aggStatus) (\(AudioTapError.fourCC(aggStatus), privacy: .public))")
             AudioHardwareDestroyProcessTap(tapID)
             self.tapID = kAudioObjectUnknown
             throw AudioTapError.aggregateDeviceCreationFailed(aggStatus)
         }
         self.aggregateDeviceID = aggID
+        Self.logger.info("AudioHardwareCreateAggregateDevice ok: aggID=\(aggID) uid=\(aggUID, privacy: .public)")
 
         // ── Step 5: AsyncStream + consumer task
         let (stream, cont) = AsyncStream<AVAudioPCMBuffer>.makeStream(
@@ -157,24 +205,44 @@ public final class SystemAudioTap: @unchecked Sendable {
 
         // ── Step 6: IOProc を登録 (block 版)
         let ringRef = self.ring
+        let callCounter = self._ioProcCallCount
+        let nonZeroCounter = self._nonZeroBufferCount
+        let recvBytesCounter = self._recvBytesTotal
         var procID: AudioDeviceIOProcID?
         let ioStatus = AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inputData, _, _, _ in
-            // RT スレッド。malloc / lock / ARC を踏まない。
+            // RT スレッド。malloc / lock / ARC を踏まない (Atomic は OK)。
             // tap からは input 側に書き込まれる (Core Audio HAL の仕様)。
             //
             // `UnsafeMutableAudioBufferListPointer` は `UnsafeMutablePointer<AudioBufferList>` を
             // 取るので、const cast して wrap する (中身は読み取り専用に扱う)。
+            callCounter.value.wrappingAdd(1, ordering: .relaxed)
             let mutPtr = UnsafeMutablePointer<AudioBufferList>(mutating: inputData)
             let blp = UnsafeMutableAudioBufferListPointer(mutPtr)
+            var bufNonZero = false
             for buf in blp {
                 guard let data = buf.mData else { continue }
                 let count = Int(buf.mDataByteSize)
                 if count > 0 {
+                    // RT-safe silence detection: 最初の数 Float32 サンプルだけ peek
+                    // (全数走査は重いので、最初の 16 サンプルでスポットチェック)
+                    if !bufNonZero {
+                        let probeCount = min(count / MemoryLayout<Float32>.size, 16)
+                        let fp = data.assumingMemoryBound(to: Float32.self)
+                        for i in 0..<probeCount where fp[i] != 0 {
+                            bufNonZero = true
+                            break
+                        }
+                    }
                     _ = ringRef.push(UnsafeRawPointer(data), count: count)
+                    recvBytesCounter.value.wrappingAdd(count, ordering: .relaxed)
                 }
+            }
+            if bufNonZero {
+                nonZeroCounter.value.wrappingAdd(1, ordering: .relaxed)
             }
         }
         guard ioStatus == noErr, let procID else {
+            Self.logger.error("AudioDeviceCreateIOProcIDWithBlock failed: status=\(ioStatus) (\(AudioTapError.fourCC(ioStatus), privacy: .public))")
             // cleanup
             AudioHardwareDestroyAggregateDevice(aggID)
             AudioHardwareDestroyProcessTap(tapID)
@@ -186,10 +254,12 @@ public final class SystemAudioTap: @unchecked Sendable {
             throw AudioTapError.ioProcCreationFailed(ioStatus)
         }
         self.ioProcID = procID
+        Self.logger.info("IOProc created")
 
         // ── Step 7: device start (ここで初回 TCC プロンプト)
         let startStatus = AudioDeviceStart(aggID, procID)
         guard startStatus == noErr else {
+            Self.logger.error("AudioDeviceStart failed: status=\(startStatus) (\(AudioTapError.fourCC(startStatus), privacy: .public)) — TCC denial の可能性")
             AudioDeviceDestroyIOProcID(aggID, procID)
             AudioHardwareDestroyAggregateDevice(aggID)
             AudioHardwareDestroyProcessTap(tapID)
@@ -201,6 +271,7 @@ public final class SystemAudioTap: @unchecked Sendable {
             self.consumerTask = nil
             throw AudioTapError.deviceStartFailed(startStatus)
         }
+        Self.logger.info("AudioDeviceStart ok — capturing")
 
         isRunning = true
         return stream
@@ -217,6 +288,16 @@ public final class SystemAudioTap: @unchecked Sendable {
         defer { lock.unlock() }
         guard isRunning else { return }
         isRunning = false
+
+        let callCount = _ioProcCallCount.value.load(ordering: .relaxed)
+        let nonZeroCount = _nonZeroBufferCount.value.load(ordering: .relaxed)
+        let recvBytes = _recvBytesTotal.value.load(ordering: .relaxed)
+        Self.logger.info("SystemAudioTap.stop: ioProcCalls=\(callCount) nonZeroBuffers=\(nonZeroCount) bytesReceived=\(recvBytes) droppedPushes=\(self.ring.droppedPushCount)")
+        // ── 無音バッファのみだった場合は、TCC 拒否の可能性を強く警告する。
+        // (kTCCServiceAudioCapture は AudioDeviceStart 自体は noErr のままで silent buffer を返す)
+        if callCount >= 10 && nonZeroCount == 0 && recvBytes > 0 {
+            Self.logger.error("SystemAudioTap: \(callCount) IOProc calls received \(recvBytes) bytes but ALL ZERO. 強い疑い → kTCCServiceAudioCapture (システム音声録音 TCC) が拒否されている。システム設定 → プライバシーとセキュリティ → 「システム音声録音」(または旧名 “マイク” 配下) でアプリの許可状況を確認してください。")
+        }
 
         if let procID = ioProcID {
             AudioDeviceStop(aggregateDeviceID, procID)
