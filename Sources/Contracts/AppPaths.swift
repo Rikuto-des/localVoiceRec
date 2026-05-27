@@ -34,8 +34,9 @@ public enum AppPaths {
 
     /// 特定の録音のディレクトリ。
     /// 例: `<recordingsRoot>/<UUID>/`
-    /// この配下に `mic.m4a` (ALAC), `system.m4a` (ALAC) を置く。
-    /// v0.1.0 以前のインストールでは `mic.wav` / `system.wav` のままになっている場合あり。
+    /// この配下に `mic.wav`, `system.wav` を置く (Linear PCM)。
+    /// 過去に ALAC (`.m4a`) で試行したバージョンの録音が残っている場合があるが、
+    /// 現行コードパスは WAV のみを書き出す。
     public static func recordingDirectory(for id: UUID) throws -> URL {
         let dir = try recordingsRoot().appendingPathComponent(id.uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

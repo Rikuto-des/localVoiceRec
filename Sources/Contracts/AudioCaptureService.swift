@@ -131,4 +131,7 @@ public enum AudioCaptureError: Error, Sendable, Hashable {
     case notRecording
     case fileWriteFailed(message: String)
     case outputDirectoryUnavailable(URL)
+    /// `WriterSink.write` がディスク満杯 / I/O エラーで連続失敗し、watchdog が
+    /// しきい値を超えたと判定した。`failureCount` は mic+system 累計の失敗回数。
+    case diskWriteFailure(failureCount: Int)
 }

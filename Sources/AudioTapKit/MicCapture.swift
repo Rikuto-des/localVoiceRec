@@ -1,6 +1,7 @@
 import Foundation
 import AVFAudio
 import AVFoundation
+import os.log
 
 /// `AVAudioEngine.inputNode` 経由でマイク音声を取得する。
 ///
@@ -14,6 +15,8 @@ import AVFoundation
 ///   入力に適用される。会議録音時にスピーカーから出た相手の声がマイクに回り込むのを
 ///   システムレベルで除去する。format は 16kHz mono に固定される副作用がある点に注意。
 public final class MicCapture: @unchecked Sendable {
+
+    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio.mic")
 
     public enum State {
         case idle
@@ -91,8 +94,11 @@ public final class MicCapture: @unchecked Sendable {
                 try engine.inputNode.setVoiceProcessingEnabled(true)
             } catch {
                 // 一部のデバイス・format ではサポートされない。raw キャプチャに fallback。
-                // os.log は AudioCapture モジュール側に既にあるので、ここでは print も避け、
-                // 上位に伝える情報は state machine ではなく副作用としての format に乗せる。
+                // サイレントフェイルを避けるため warning ログを出す。AEC/NS/AGC が掛からないと
+                // スピーカー回り込みが録音されるため、診断に有用。
+                Self.logger.warning(
+                    "Voice Processing 有効化失敗、raw マイク入力にフォールバック: \(String(describing: error), privacy: .public)"
+                )
             }
         }
 

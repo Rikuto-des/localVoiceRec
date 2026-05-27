@@ -2,6 +2,7 @@ import Foundation
 @preconcurrency import AVFoundation
 import Speech
 import Contracts
+import os.log
 
 /// `TranscriptionService` の本実装。
 ///
@@ -11,6 +12,34 @@ import Contracts
 /// 同一 `locale` / `preset` で 2 つの transcriber を作るため、backing engine と
 /// on-device モデルは共有される（Apple 公式仕様）。
 public actor SpeechAnalyzerService: TranscriptionService {
+
+    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "transcription")
+
+    // MARK: - Time sanitization
+
+    /// `result.range.start.seconds` / `end.seconds` が NaN や逆転になっているケースを補正する。
+    ///
+    /// - NaN startSec → `previousEndSec` を引き継ぐ (時系列が前に飛ばないように)
+    /// - NaN endSec   → `startSec` と同値 (= 0 幅セグメント) にしてから後段で最小幅補正
+    /// - endSec < startSec → `endSec = startSec + 0.01` で最小幅補正
+    ///
+    /// 戻り値は `(start, end)`。観測時は `os.log.debug` に記録する。
+    static func sanitizeTimes(
+        startSec: Double,
+        endSec: Double,
+        previousEndSec: Double
+    ) -> (start: Double, end: Double) {
+        let s = startSec.isFinite ? startSec : previousEndSec
+        var e = endSec.isFinite ? endSec : s
+        if !startSec.isFinite || !endSec.isFinite {
+            logger.debug("NaN times detected: rawStart=\(startSec) rawEnd=\(endSec) → s=\(s) e=\(e)")
+        }
+        if e < s {
+            logger.debug("Inverted times: start=\(s) end=\(e) → adjusting end to start+0.01")
+            e = s + 0.01
+        }
+        return (s, e)
+    }
 
     // MARK: - State
 
@@ -146,17 +175,24 @@ public actor SpeechAnalyzerService: TranscriptionService {
                     }
                     // c) 結果消費 (isFinal のみ outer continuation へ)
                     group.addTask {
+                        var previousEndSec: Double = 0
                         for try await result in transcriber.results {
                             try Task.checkCancellation()
                             guard result.isFinal else { continue }
                             let text = String(result.text.characters)
-                            let startSec = result.range.start.seconds
-                            let endSec = result.range.end.seconds
+                            let rawStart = result.range.start.seconds
+                            let rawEnd = result.range.end.seconds
+                            let (s, e) = Self.sanitizeTimes(
+                                startSec: rawStart,
+                                endSec: rawEnd,
+                                previousEndSec: previousEndSec
+                            )
+                            previousEndSec = e
                             continuation.yield(TranscriptSegment(
                                 recordingID: recordingID,
                                 source: source,
-                                startSec: startSec.isFinite ? startSec : 0,
-                                endSec: endSec.isFinite ? endSec : 0,
+                                startSec: s,
+                                endSec: e,
                                 text: text,
                                 isFinal: true
                             ))
@@ -351,16 +387,26 @@ public actor SpeechAnalyzerService: TranscriptionService {
         // 結果消費 Task
         let resultsTask = Task<Void, Error> {
             do {
+                var previousEndSec: Double = 0
                 for try await result in transcriber.results {
                     try Task.checkCancellation()
                     let text = String(result.text.characters)
-                    let startSec = result.range.start.seconds
-                    let endSec = result.range.end.seconds
+                    let rawStart = result.range.start.seconds
+                    let rawEnd = result.range.end.seconds
+                    let (s, e) = SpeechAnalyzerService.sanitizeTimes(
+                        startSec: rawStart,
+                        endSec: rawEnd,
+                        previousEndSec: previousEndSec
+                    )
+                    // isFinal のみ前進カウンタを更新 (partial は揺れるため)
+                    if result.isFinal {
+                        previousEndSec = e
+                    }
                     let segment = TranscriptSegment(
                         recordingID: recordingID,
                         source: source,
-                        startSec: startSec.isFinite ? startSec : 0,
-                        endSec: endSec.isFinite ? endSec : 0,
+                        startSec: s,
+                        endSec: e,
                         text: text,
                         isFinal: result.isFinal
                     )

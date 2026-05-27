@@ -167,7 +167,11 @@ struct StaticWaveformView: View {
 
         // 読み込みは chunk 単位で実施（巨大ファイル対策）
         let chunkSize: AVAudioFrameCount = 65_536
-        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkSize)!
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkSize) else {
+            // 異常 format (channelCount = 0 など) では PCMBuffer が作れない。
+            // crash させずに空波形として返す (loadError には反映されないが、UI 上は無音表示)。
+            return ([], 0)
+        }
 
         let bucketsCount = max(resolution, 1)
         let framesPerBucket = Double(total) / Double(bucketsCount)

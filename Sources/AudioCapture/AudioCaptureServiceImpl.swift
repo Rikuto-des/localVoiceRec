@@ -102,9 +102,14 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         self.liveTranscriptionEnabled = liveTranscriptionEnabled && liveTranscription != nil
         self.liveTranscriptionLocale = liveTranscriptionLocale
 
+        // bufferingPolicy: 旧実装は `.unbounded` だったが、現状 UI は live transcript を
+        // 購読していない (P4.5 で撤去)。consumer なしで `.unbounded` だと segment が
+        // 永続的に actor (= アプリ寿命) 内に積まれてしまうため、上限を 100 に絞り
+        // 古いものから捨てる方針に変更。将来 live ASR UI を再導入した際にも
+        // 「最新の文脈のみ」あれば十分。
         var liveCaptured: AsyncStream<TranscriptSegment>.Continuation!
         self.liveTranscriptStream = AsyncStream<TranscriptSegment>(
-            bufferingPolicy: .unbounded
+            bufferingPolicy: .bufferingNewest(100)
         ) { liveCaptured = $0 }
         self.liveTranscriptContinuation = liveCaptured
 
@@ -190,6 +195,36 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         active.micSink.setPaused(true)
         active.systemSink.setPaused(true)
         transition(to: .interrupted(reason: reason, startedAt: startedAt, interruptedAt: Date()))
+    }
+
+    /// Disk watchdog から呼ばれる。ディスク書き込みが連続失敗したケースで、
+    /// 録音継続しても無音ファイルが伸びるだけなので `.failed` に遷移させて
+    /// ハードウェア / writer を停止する。
+    /// 上位 (UI) は `stateUpdates` で `.failed(.diskWriteFailure)` を観測し、
+    /// ユーザーに「ディスク容量を確認してください」等の通知を出す。
+    func handleDiskWriteFailure(failureCount: Int) {
+        guard let active else { return }
+        switch _currentState {
+        case .recording, .paused:
+            break
+        default:
+            return
+        }
+        Self.logger.error("AudioCaptureServiceImpl.handleDiskWriteFailure: failureCount=\(failureCount)")
+        // 書き込みを止め、ハードウェアも停止する。`stop()` 相当のクリーンアップは行わず、
+        // active のクリアは `.failed` 観測後にユーザー操作 (新規 start) で上書きされる前提。
+        active.micSink.setPaused(true)
+        active.systemSink.setPaused(true)
+        active.mic.stop()
+        active.tap.stop()
+        active.levelEmitTask.cancel()
+        active.watchdogTask.cancel()
+        active.diskWatchdogTask.cancel()
+        // writer を閉じてファイルを flush しておく (途中までは有効なデータ)
+        active.micSink.close()
+        active.systemSink.close()
+        transition(to: .failed(error: .diskWriteFailure(failureCount: failureCount)))
+        self.active = nil
     }
 
     // MARK: - State transition
@@ -312,7 +347,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             throw err
         }
 
-        // ── 可逆音声ライタ準備 (ALAC / .m4a)
+        // ── 可逆音声ライタ準備 (Linear PCM / WAV)
         let micWriter: WAVFileWriter
         let systemWriter: WAVFileWriter
         do {
@@ -479,6 +514,33 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             }
         }
 
+        // ── Disk write watchdog: WriterSink.failureCount が閾値超で .failed に遷移
+        // ディスク満杯 / I/O エラーで write が連続失敗しても録音は無音継続してしまう
+        // 「サイレントフェイル」を観測可能にして、上位 UI が気付けるようにする。
+        let diskFailureThreshold = 5
+        let micSinkRef = micSink
+        let systemSinkRef = systemSink
+        let diskWatchdogTask = Task.detached(priority: .utility) { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+                if Task.isCancelled { break }
+                let state = await self?.currentState
+                // 録音中 or 中断中以外 (idle/preparing/finalizing/failed) はカウントしない
+                switch state {
+                case .recording, .paused:
+                    break
+                default:
+                    continue
+                }
+                let total = micSinkRef.failureCount + systemSinkRef.failureCount
+                if total > diskFailureThreshold {
+                    Self.logger.error("Disk watchdog: write failures total=\(total), promoting to .failed")
+                    await self?.handleDiskWriteFailure(failureCount: total)
+                    break
+                }
+            }
+        }
+
         // ── ActiveSession を構築
         let session = CaptureSession(
             id: sessionID,
@@ -497,6 +559,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             systemTask: systemTask,
             levelEmitTask: levelEmitTask,
             watchdogTask: watchdogTask,
+            diskWatchdogTask: diskWatchdogTask,
             liveASRTasks: liveASRTasks
         )
         Self.logger.info("AudioCaptureServiceImpl.start: micFormat=\(String(describing: mic.captureFormat)) sysFormat=\(String(describing: tap.captureFormat))")
@@ -552,6 +615,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         // level emit / watchdog は先に止める (空 snapshot の余分な yield を防ぐ)
         active.levelEmitTask.cancel()
         active.watchdogTask.cancel()
+        active.diskWatchdogTask.cancel()
 
         // ハードウェア停止 → ストリームの finish が伝搬 → consumer Task が自然終了する。
         active.mic.stop()
@@ -562,6 +626,12 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         _ = await active.systemTask.value
         _ = await active.levelEmitTask.value
         _ = await active.watchdogTask.value
+        _ = await active.diskWatchdogTask.value
+
+        // 失敗カウンタはセッションごとに 0 からカウントするためここでリセット。
+        // (sink 自体は close 後に破棄されるが、参照が残った場合の安全策)
+        active.micSink.resetFailureCount()
+        active.systemSink.resetFailureCount()
 
         // writer を明示 close (AVAudioFile は ARC で flush するが、シーケンスポイントとして残す)
         // この close() 内で live ASR feed continuation も finish() され、
@@ -679,8 +749,13 @@ enum SystemAudioCaptureFlag {
     /// UserDefaults キー。namespace 衝突を避けるため逆ドメイン記法。
     static let key = "com.example.localVoiceRec.systemAudio.everCaptured"
 
-    /// テスト用に override 可能な store。デフォルトは `.standard`。
+    /// テスト用に override 可能な store。本番ビルドでは `.standard` で固定し、
+    /// `#if DEBUG` 時のみ書き換え可能 (= テストハーネスからの差し替え専用)。
+    #if DEBUG
     nonisolated(unsafe) static var store: UserDefaults = .standard
+    #else
+    nonisolated(unsafe) static let store: UserDefaults = .standard
+    #endif
 
     static func everCaptured() -> Bool {
         store.bool(forKey: key)
@@ -711,6 +786,9 @@ private struct ActiveSession {
     let systemTask: Task<Void, Never>
     let levelEmitTask: Task<Void, Never>
     let watchdogTask: Task<Void, Never>
+    /// ディスク書き込み失敗 watchdog Task。
+    /// `WriterSink.failureCount` が閾値超で `.failed(.diskWriteFailure)` に遷移させる。
+    let diskWatchdogTask: Task<Void, Never>
     /// Live ASR (P4.2) の結果転送 Task。`liveTranscription` 無効時は空。
     let liveASRTasks: [Task<Void, Never>]
 }
@@ -760,6 +838,13 @@ final class WriterSink: @unchecked Sendable {
     var failureCount: Int {
         lock.lock(); defer { lock.unlock() }
         return writeFailureCount
+    }
+
+    /// 失敗カウンタをリセットする (録音停止時に呼ぶ)。
+    func resetFailureCount() {
+        lock.lock()
+        writeFailureCount = 0
+        lock.unlock()
     }
 
     func setPaused(_ value: Bool) {
