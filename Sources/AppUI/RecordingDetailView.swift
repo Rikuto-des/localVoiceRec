@@ -59,18 +59,60 @@ struct RecordingDetailView: View {
 
     private var transcriptSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            sectionHeader(title: "文字起こし", systemImage: "text.bubble")
+            HStack {
+                sectionHeader(title: "文字起こし", systemImage: "text.bubble")
+                Spacer()
+                transcribeControls
+            }
 
-            if viewModel.segments.isEmpty {
-                emptyBox(message: "文字起こしがまだありません")
+            if viewModel.isTranscribing && viewModel.segments.isEmpty {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ProgressView().controlSize(.small)
+                    Text("文字起こしを実行中...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+            } else if viewModel.segments.isEmpty {
+                emptyBox(message: "文字起こしがまだありません。「文字起こしを実行」を押してください。")
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.segments) { segment in
                         TranscriptBubble(segment: segment)
                     }
+                    if viewModel.isTranscribing {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            ProgressView().controlSize(.small)
+                            Text("追加の発話を解析中...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, Theme.Spacing.xs)
+                    }
                 }
             }
         }
+    }
+
+    private var transcribeControls: some View {
+        Button {
+            Task {
+                if let recording = viewModel.selectedRecording {
+                    await viewModel.transcribeRecording(recording)
+                }
+            }
+        } label: {
+            if viewModel.isTranscribing {
+                Label("実行中...", systemImage: "ellipsis")
+            } else if viewModel.segments.isEmpty {
+                Label("文字起こしを実行", systemImage: "waveform.badge.plus")
+            } else {
+                Label("再実行", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+        .disabled(viewModel.isTranscribing || viewModel.selectedRecording == nil)
     }
 
     // MARK: - Summary
@@ -85,10 +127,34 @@ struct RecordingDetailView: View {
 
             availabilityNotice
 
-            if let summary = viewModel.summaryDocument {
+            if viewModel.isSummarizing && viewModel.summaryDocument == nil {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ProgressView().controlSize(.small)
+                    Text("要約を生成中...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+            } else if let summary = viewModel.summaryDocument {
                 summaryContent(summary)
+            } else if viewModel.segments.isEmpty {
+                emptyBox(message: "先に文字起こしを実行してください")
             } else {
-                emptyBox(message: "要約はまだ生成されていません")
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    emptyBox(message: "要約はまだ生成されていません")
+                    Button {
+                        Task {
+                            if let recording = viewModel.selectedRecording {
+                                await viewModel.summarizeRecording(recording)
+                            }
+                        }
+                    } label: {
+                        Label("要約を生成", systemImage: "sparkles")
+                    }
+                    .disabled(viewModel.isSummarizing || !isSummaryAvailable)
+                }
             }
         }
     }
@@ -143,6 +209,7 @@ struct RecordingDetailView: View {
             }
             .disabled(
                 viewModel.isBusy ||
+                viewModel.isSummarizing ||
                 viewModel.segments.isEmpty ||
                 !isSummaryAvailable
             )

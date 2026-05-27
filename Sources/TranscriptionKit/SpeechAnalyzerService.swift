@@ -193,7 +193,7 @@ public actor SpeechAnalyzerService: TranscriptionService {
         do {
             audioFile = try AVAudioFile(forReading: url)
         } catch {
-            throw TranscriptionError.fileNotReadable(url)
+            throw TranscriptionError.analyzerFailed(message: "AVAudioFile open failed for \(url.lastPathComponent): \(error)")
         }
 
         // 入力 sequence
@@ -296,14 +296,22 @@ public actor SpeechAnalyzerService: TranscriptionService {
         while true {
             try Task.checkCancellation()
 
+            // 残量を計算。AVAudioFile.read(into:) は最終 partial read で
+            // nilError を返すことがあるため、残量に合わせて frameCount を明示する。
+            let remaining = audioFile.length - audioFile.framePosition
+            if remaining <= 0 {
+                break  // 正常 EOF
+            }
+            let toRead = AVAudioFrameCount(min(Int64(readFrameCapacity), remaining))
+
             inputBuffer.frameLength = 0
             do {
-                try audioFile.read(into: inputBuffer)
+                try audioFile.read(into: inputBuffer, frameCount: toRead)
             } catch {
-                throw TranscriptionError.fileNotReadable(audioFile.url)
+                throw TranscriptionError.analyzerFailed(message: "AVAudioFile.read failed for \(audioFile.url.lastPathComponent) at \(audioFile.framePosition)/\(audioFile.length): \(error)")
             }
             if inputBuffer.frameLength == 0 {
-                break  // EOF
+                break  // EOF (念のため)
             }
 
             let buffer: AVAudioPCMBuffer
