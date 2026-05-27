@@ -255,15 +255,22 @@ public final class AppViewModel {
         isBusy = true
         defer { isBusy = false }
         do {
-            // 権限が未要求なら先に OS プロンプトを出す（録音が無音になる事故を防ぐ）
+            // 権限が未要求なら先に OS プロンプトを出す（録音が無音になる事故を防ぐ）。
+            // mic / systemAudio (画面収録 TCC) のいずれかが notDetermined なら
+            // `requestAuthorization()` を呼び、両プロンプトを順に表示させる。
             let current = await capture.authorizationStatus()
-            if current.microphone == .notDetermined {
+            if current.microphone == .notDetermined || current.systemAudio == .notDetermined {
                 _ = await capture.requestAuthorization()
             }
             // 拒否されていたらここで中断
             let after = await capture.authorizationStatus()
             if after.microphone == .denied {
                 lastError = "マイク権限が拒否されています。診断パネルから設定を開いて許可してください。"
+                await refreshDiagnostics()
+                return
+            }
+            if after.systemAudio == .denied {
+                lastError = "画面収録権限（システム音声録音に必要）が拒否されています。システム設定 → プライバシーとセキュリティ → 画面収録 で本アプリを許可してください。"
                 await refreshDiagnostics()
                 return
             }

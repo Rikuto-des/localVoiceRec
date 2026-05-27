@@ -7,6 +7,9 @@ import os.log
 #if canImport(AppKit)
 import AppKit
 #endif
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 /// 本番 `AudioCaptureService` 実装。
 ///
@@ -239,12 +242,37 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     public func authorizationStatus() async -> AudioAuthorizationStatus {
         let mic = Self.mapAVAuthStatus(AVCaptureDevice.authorizationStatus(for: .audio))
-        // System Audio (Core Audio process tap) は事前 query API が無いため、
-        // 過去に non-zero audio を取得できた実績 (`SystemAudioCaptureFlag`) を採用する。
-        // 実績ありなら `.authorized`、無ければ `.notDetermined` を返す。
-        // (実体験ベース。TCC で許可しているのに「未要求」表示になる UX バグの解消)
-        let systemState: AudioAuthorizationStatus.State =
-            SystemAudioCaptureFlag.everCaptured() ? .authorized : .notDetermined
+        // System Audio (Core Audio process tap) は事前 query API が無いが、
+        // **画面収録権限 (TCC: ScreenCapture)** は process tap の前提条件として
+        // 同じ TCC スイッチで制御されている。CGPreflightScreenCaptureAccess() は
+        // - true: TCC で画面収録が許可されている (= process tap も使える前提)
+        // - false: 未許可 / 未要求
+        // を返す。プロンプトは出さない (= preflight)。
+        //
+        // 動作確認方法:
+        //   1. システム設定 → プライバシーとセキュリティ → 画面収録 で本アプリを
+        //      OFF にして再起動 → preflight が false → `.notDetermined` (実績なし時)
+        //   2. ON にして再起動 → preflight が true → `.authorized`
+        //
+        // Sandbox 環境について: 過去の検証で App Sandbox + Hardened Runtime 配下でも
+        // CGPreflight/CGRequestScreenCaptureAccess は機能することを確認済み
+        // (entitlements は不要。TCC へのアクセスのみ)。
+        //
+        // フォールバック: preflight が false でも、過去に non-zero audio を取得できた
+        // 実績 (`SystemAudioCaptureFlag`) があれば `.authorized` 扱いにする
+        // (TCC キャッシュずれの保険)。
+        let systemState: AudioAuthorizationStatus.State
+        #if canImport(CoreGraphics)
+        if CGPreflightScreenCaptureAccess() {
+            systemState = .authorized
+        } else if SystemAudioCaptureFlag.everCaptured() {
+            systemState = .authorized
+        } else {
+            systemState = .notDetermined
+        }
+        #else
+        systemState = SystemAudioCaptureFlag.everCaptured() ? .authorized : .notDetermined
+        #endif
         return AudioAuthorizationStatus(microphone: mic, systemAudio: systemState)
     }
 
@@ -257,10 +285,39 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             }
         }
         let mic: AudioAuthorizationStatus.State = micGranted ? .authorized : .denied
-        // System Audio は初回 `tap.start()` で OS プロンプトが出る前提。ここでは判定不能。
-        // ただし過去実績があれば `.authorized` を返す（許可済みの再表示用）。
-        let systemState: AudioAuthorizationStatus.State =
-            SystemAudioCaptureFlag.everCaptured() ? .authorized : .notDetermined
+
+        // 画面収録権限を明示的に要求する。CGRequestScreenCaptureAccess() は同期 API で
+        // - 既に許可済み → true を即返す (プロンプトなし)
+        // - 未要求/拒否 → TCC プロンプトを出して結果を返す (false の場合は「設定アプリ
+        //   を開く必要あり」状態。CGRequest は OS に依存して再プロンプトしないことが多い)
+        // process tap (システム音声録音) は同じ TCC スイッチで制御されているため、
+        // ここで明示要求しておくことで初回録音時の「無音問題」を回避できる。
+        //
+        // 動作確認方法:
+        //   1. TCC リセット: `tccutil reset ScreenCapture com.example.localVoiceRec`
+        //   2. アプリ起動 → requestAuthorization() 呼び出し → プロンプト出現を確認
+        //   3. 許可 → 返り値 true / 拒否 → false
+        //
+        // Sandbox 環境について: App Sandbox 配下でも CGRequest は機能する
+        // (過去事例で確認済み。専用 entitlement は不要)。
+        let systemState: AudioAuthorizationStatus.State
+        #if canImport(CoreGraphics)
+        let screenGranted = CGRequestScreenCaptureAccess()
+        if screenGranted {
+            systemState = .authorized
+        } else if SystemAudioCaptureFlag.everCaptured() {
+            // 過去実績フォールバック (TCC キャッシュずれや preflight false but tap works
+            // の保険)。
+            systemState = .authorized
+        } else {
+            // CGRequest が false を返したケース: ユーザーが拒否したか、すでに拒否済みで
+            // 再プロンプトされなかった。`.denied` として明示する (UI 側で設定アプリへの
+            // 案内を出せる)。
+            systemState = .denied
+        }
+        #else
+        systemState = SystemAudioCaptureFlag.everCaptured() ? .authorized : .notDetermined
+        #endif
         return AudioAuthorizationStatus(microphone: mic, systemAudio: systemState)
     }
 
