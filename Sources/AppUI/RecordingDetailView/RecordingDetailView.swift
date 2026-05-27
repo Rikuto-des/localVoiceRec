@@ -35,6 +35,10 @@ struct RecordingDetailView: View {
     @State var isFullTextExpanded: Bool = false
     @State var fullTextCopyConfirmedAt: Date?
 
+    // ─── 文字起こし表示オプション (E-series UI overhaul) ───
+    /// 「回り込み」と推定されたセグメントを隠すか。検索バーと全文セクションで共有。
+    @State var hideEcho: Bool = true
+
     // ─── Export 関連 ───
     @State var showFormatChooser: Bool = false
     @State var exportDocument: MinutesExportDocument?
@@ -106,86 +110,6 @@ struct RecordingDetailView: View {
         .subtleSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(message)")
-    }
-}
-
-// MARK: - TranscriptBubble
-
-/// チャット風の発話バブル。
-///
-/// HIG: 自分 (mic) は trailing / 相手 (system) は leading に寄せる。
-/// 色は `Theme.Palette.micBubble` (accentColor) と `systemBubble` (controlBackground) で
-/// アクセシビリティ的にも 1 種の色だけに依存しないよう、アイコン + ラベルテキストでも区別。
-struct TranscriptBubble: View {
-    let segment: TranscriptSegment
-
-    var body: some View {
-        HStack {
-            if segment.source == .mic {
-                Spacer(minLength: 40)
-                bubble(alignment: .trailing)
-            } else {
-                bubble(alignment: .leading)
-                Spacer(minLength: 40)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(speakerLabel) \(AppFormatters.timestamp(from: segment.startSec)): \(segment.text)")
-    }
-
-    private func bubble(alignment: HorizontalAlignment) -> some View {
-        VStack(alignment: alignment, spacing: Theme.Spacing.xs) {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: segment.source == .mic ? "person.fill" : "speaker.wave.2.fill")
-                    .font(.caption2)
-                    .accessibilityHidden(true)
-                Text(speakerLabel)
-                    .font(.caption2)
-                Text(AppFormatters.timestamp(from: segment.startSec))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if segment.isLikelyEcho {
-                    Text("回り込みの可能性")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .strokeBorder(Theme.Palette.separator, lineWidth: 0.5)
-                        )
-                        .accessibilityLabel("マイクが相手の声を拾った可能性があります")
-                }
-            }
-            .foregroundStyle(.secondary)
-
-            Text(segment.text)
-                .font(.body)
-                .foregroundStyle(segment.source == .mic ? Theme.Palette.micText : Theme.Palette.systemText)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-                .background(
-                    segment.source == .mic ? Theme.Palette.micBubble : Theme.Palette.systemBubble,
-                    in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-                )
-                .frame(maxWidth: Theme.Layout.bubbleMaxWidth, alignment: alignment == .trailing ? .trailing : .leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if !segment.isFinal {
-                Text("（暫定）")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        // 回り込み判定セグメントは透過度を落として「副次的な情報」感を出す。
-        .opacity(segment.isLikelyEcho ? 0.55 : 1.0)
-    }
-
-    private var speakerLabel: String {
-        switch segment.source {
-        case .mic: return "自分"
-        case .system: return "相手"
-        }
     }
 }
 

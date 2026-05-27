@@ -95,6 +95,24 @@ enum AppFormatters {
         return String(format: "%02d:%02d", minutes, secs)
     }
 
+    /// 秒数を `hh:mm:ss` 表記にする。`75.0` → `00:01:15`。
+    static func timestampHMS(from seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        return String(format: "%02d:%02d:%02d", h, m, s)
+    }
+
+    /// VoiceOver 用の読み上げ表記。`75.0` → `0時1分15秒`。
+    static func timestampHMSSpoken(from seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        return "\(h)時\(m)分\(s)秒"
+    }
+
     /// 録音継続時間を `H時間M分S秒` 表記にする（時間が 0 なら省略）。
     static func duration(_ interval: TimeInterval) -> String {
         let total = max(0, Int(interval.rounded()))
