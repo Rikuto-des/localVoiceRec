@@ -50,31 +50,54 @@ public struct MainScene: Scene {
 }
 
 /// メニューバーアイコン。
-/// 録音中: 赤丸 / 一時停止: 橙 / 処理中（文字起こし・要約）: パルスアイコン / 待機: マイク。
+///
+/// HIG (Menu bar extras): モノクロームのテンプレートが原則だが、録音中だけは
+/// 「進行中操作」を一目で伝えるため `systemRed` の `record.circle.fill` に切り替える。
+/// その他は SF Symbol のシンプルなアイコンに留め、必要なときだけ `symbolEffect` を使う。
+///
+/// 状態:
+/// - recording: 赤丸 (pulse)
+/// - paused: pause.circle (橙)
+/// - preparing / finalizing: ローディング系
+/// - failed: 警告
+/// - idle + processing: マイク + パルス
+/// - idle: シンプルなマイク
 private struct MenuBarLabel: View {
     let state: CaptureState
     let isProcessing: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        switch state {
-        case .recording:
-            Image(systemName: "record.circle.fill")
-                .foregroundStyle(.red)
-        case .paused:
-            Image(systemName: "pause.circle.fill")
-                .foregroundStyle(.orange)
-        case .preparing, .finalizing:
-            Image(systemName: "mic.circle")
-        case .failed:
-            Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(.red)
-        case .idle:
-            if isProcessing {
-                Image(systemName: "mic.badge.plus")
-                    .symbolEffect(.pulse, options: .repeating)
-                    .foregroundStyle(.secondary)
-            } else {
-                Image(systemName: "mic.fill")
+        Group {
+            switch state {
+            case .recording:
+                Image(systemName: "record.circle.fill")
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .symbolEffect(.pulse, options: reduceMotion ? .nonRepeating : .repeating)
+                    .accessibilityLabel("録音中")
+            case .paused:
+                Image(systemName: "pause.circle.fill")
+                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .accessibilityLabel("一時停止中")
+            case .preparing:
+                Image(systemName: "mic.circle")
+                    .accessibilityLabel("準備中")
+            case .finalizing:
+                Image(systemName: "arrow.down.circle")
+                    .accessibilityLabel("保存中")
+            case .failed:
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .accessibilityLabel("録音エラー")
+            case .idle:
+                if isProcessing {
+                    Image(systemName: "waveform.badge.magnifyingglass")
+                        .symbolEffect(.pulse, options: reduceMotion ? .nonRepeating : .repeating)
+                        .accessibilityLabel("処理中")
+                } else {
+                    Image(systemName: "mic.fill")
+                        .accessibilityLabel("localVoiceRec")
+                }
             }
         }
     }

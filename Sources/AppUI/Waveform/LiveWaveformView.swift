@@ -33,20 +33,20 @@ struct LiveWaveformView: View {
             Canvas { ctx, size in
                 drawBackground(ctx: ctx, size: size)
                 drawWaveform(ctx: ctx, size: size, channel: .mic, color: .accentColor)
-                drawWaveform(ctx: ctx, size: size, channel: .system, color: .orange)
+                drawWaveform(ctx: ctx, size: size, channel: .system, color: Theme.Palette.warning)
                 drawAxis(ctx: ctx, size: size)
             }
             .frame(height: 80)
             .background(
-                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                    .fill(Theme.Palette.surfaceSecondary)
             )
             .accessibilityLabel(accessibilityLabel)
 
             headerRow(
                 title: "System",
                 systemImage: "speaker.wave.2.fill",
-                color: .orange,
+                color: Theme.Palette.warning,
                 rms: history.last?.systemRMS ?? 0,
                 isSilent: history.last?.isSystemSilent ?? true
             )
@@ -91,18 +91,22 @@ struct LiveWaveformView: View {
             Label {
                 Text(title).font(.caption.bold())
             } icon: {
-                Image(systemName: systemImage).foregroundStyle(color)
+                Image(systemName: systemImage)
+                    .foregroundStyle(color)
+                    .accessibilityHidden(true)
             }
             Spacer()
             if isSilent {
                 Label("無音", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.Palette.warning)
                     .help("信号レベルが -60 dBFS を下回っています。録音されていない可能性があります。")
+                    .accessibilityLabel("無音を検出")
             }
             Text(Self.formatDB(rms: rms))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(isSilent ? .orange : .secondary)
+                .foregroundStyle(isSilent ? Theme.Palette.warning : .secondary)
+                .accessibilityLabel("レベル \(Self.formatDB(rms: rms))")
         }
     }
 

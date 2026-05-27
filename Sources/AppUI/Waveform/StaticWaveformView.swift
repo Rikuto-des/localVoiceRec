@@ -32,22 +32,27 @@ struct StaticWaveformView: View {
             }
             .frame(height: 60)
             .background(
-                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                    .fill(Theme.Palette.surfaceSecondary)
             )
             .overlay {
                 if isLoading {
                     HStack(spacing: Theme.Spacing.xs) {
                         ProgressView().controlSize(.small)
-                        Text("波形を解析中…").font(.caption2).foregroundStyle(.secondary)
+                        Text("波形を解析中…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel("波形を解析中")
                 } else if let err = loadError {
                     Text(err)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
+                        .font(.caption)
+                        .foregroundStyle(Theme.Palette.error)
                         .padding(.horizontal, Theme.Spacing.sm)
                 } else if peaks.isEmpty {
-                    Text("（未解析）").font(.caption2).foregroundStyle(.secondary)
+                    Text("（未解析）")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -60,18 +65,22 @@ struct StaticWaveformView: View {
 
     private var header: some View {
         HStack(spacing: Theme.Spacing.sm) {
-            Text(label).font(.caption.bold())
+            Text(label)
+                .font(.caption)
+                .fontWeight(.semibold)
             Spacer()
             if !peaks.isEmpty {
                 Text(maxPeakLabel)
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(isSilent ? .orange : .secondary)
+                    .foregroundStyle(isSilent ? Theme.Palette.warning : .secondary)
+                    .accessibilityLabel("ピーク \(maxPeakLabel)")
                 if isSilent {
                     Label("無音", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Theme.Palette.warning)
                         .labelStyle(.iconOnly)
                         .help("信号がほぼ検出されません。録音されていない可能性があります。")
+                        .accessibilityLabel("無音を検出")
                 }
             }
         }
