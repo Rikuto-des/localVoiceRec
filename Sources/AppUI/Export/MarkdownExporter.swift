@@ -60,7 +60,7 @@ enum MarkdownExporter {
         out += "## 文字起こし\n\n"
         out += "> 話者は **mic** = 自分、**system** = 相手\n\n"
 
-        let sorted = minutes.segments.sorted { $0.startSec < $1.startSec }
+        let sorted = minutes.renderableSegments.sorted { $0.startSec < $1.startSec }
         if sorted.isEmpty {
             out += "（文字起こしはありません）\n"
         } else {

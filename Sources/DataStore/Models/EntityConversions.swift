@@ -90,7 +90,8 @@ extension SegmentEntity {
             startSec: startSec,
             endSec: endSec,
             text: text,
-            isFinal: isFinal
+            isFinal: isFinal,
+            isLikelyEcho: isLikelyEcho ?? false
         )
     }
 
@@ -102,6 +103,7 @@ extension SegmentEntity {
             endSec: dto.endSec,
             text: dto.text,
             isFinal: dto.isFinal,
+            isLikelyEcho: dto.isLikelyEcho,
             recording: recording
         )
     }

@@ -166,7 +166,8 @@ public actor RecordingRepositoryImpl: RecordingRepository {
                 startSec: seg.startSec,
                 endSec: seg.endSec,
                 text: seg.text,
-                isFinal: seg.isFinal
+                isFinal: seg.isFinal,
+                isLikelyEcho: seg.isLikelyEcho
             )
             let entity = SegmentEntity.make(from: normalized, recording: recording)
             context.insert(entity)

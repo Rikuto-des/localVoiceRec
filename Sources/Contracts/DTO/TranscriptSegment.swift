@@ -25,6 +25,15 @@ public struct TranscriptSegment: Sendable, Identifiable, Hashable, Codable {
     /// 永続化は基本 `isFinal == true` のものだけにする想定だが、Contract レベルでは両方許容。
     public let isFinal: Bool
 
+    /// マイク回り込みで相手 (system) の音声を二重に拾った可能性が高いセグメントに立つフラグ。
+    ///
+    /// - 用途: VP/AEC を OFF にしたトレードオフで発生する「同一発話が mic / system 双方に乗る」
+    ///   現象を後段で検出し、UI 表示やエクスポートから除外する判断に使う。
+    /// - 判定: post-process (`SegmentDeduplicator.markEchoes`) が時間 overlap + テキスト
+    ///   類似度で立てる。SpeechAnalyzer 段では常に `false`。
+    /// - default あり: 既存テスト / DB マイグレーションを壊さないため。
+    public let isLikelyEcho: Bool
+
     public init(
         id: UUID = UUID(),
         recordingID: UUID,
@@ -32,7 +41,8 @@ public struct TranscriptSegment: Sendable, Identifiable, Hashable, Codable {
         startSec: Double,
         endSec: Double,
         text: String,
-        isFinal: Bool
+        isFinal: Bool,
+        isLikelyEcho: Bool = false
     ) {
         self.id = id
         self.recordingID = recordingID
@@ -41,5 +51,25 @@ public struct TranscriptSegment: Sendable, Identifiable, Hashable, Codable {
         self.endSec = endSec
         self.text = text
         self.isFinal = isFinal
+        self.isLikelyEcho = isLikelyEcho
+    }
+
+    // MARK: - Codable
+
+    /// 過去ストレージとの後方互換のため `isLikelyEcho` は欠落時 `false` にフォールバックする。
+    private enum CodingKeys: String, CodingKey {
+        case id, recordingID, source, startSec, endSec, text, isFinal, isLikelyEcho
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.recordingID = try c.decode(UUID.self, forKey: .recordingID)
+        self.source = try c.decode(Source.self, forKey: .source)
+        self.startSec = try c.decode(Double.self, forKey: .startSec)
+        self.endSec = try c.decode(Double.self, forKey: .endSec)
+        self.text = try c.decode(String.self, forKey: .text)
+        self.isFinal = try c.decode(Bool.self, forKey: .isFinal)
+        self.isLikelyEcho = try c.decodeIfPresent(Bool.self, forKey: .isLikelyEcho) ?? false
     }
 }

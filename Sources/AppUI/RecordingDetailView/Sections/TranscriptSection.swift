@@ -116,8 +116,12 @@ extension RecordingDetailView {
 
     /// `[mm:ss] mic: text` 形式の plain text を組み立てる。
     /// segments が空の場合は説明文を返す（TextEditor の placeholder 代わり）。
+    ///
+    /// マイクへの回り込みで二重転写された (`isLikelyEcho == true`) mic セグメントは
+    /// 既定で除外する（Slack 貼り付け時に「相手の声が 2 回出る」のを避けるため）。
     var fullTextString: String {
-        let sorted = viewModel.segments.sorted { $0.startSec < $1.startSec }
+        let visible = viewModel.segments.filter { !$0.isLikelyEcho }
+        let sorted = visible.sorted { $0.startSec < $1.startSec }
         guard !sorted.isEmpty else {
             return "（文字起こし結果がここに表示されます）"
         }

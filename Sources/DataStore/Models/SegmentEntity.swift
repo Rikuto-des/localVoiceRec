@@ -14,6 +14,10 @@ final class SegmentEntity {
     var text: String
     var isFinal: Bool
 
+    /// マイク回り込みで相手音声を二重転写したと推定されるセグメントは `true`。
+    /// SwiftData 既存ストアとの互換性のため optional + 既定 false で扱う。
+    var isLikelyEcho: Bool?
+
     var recording: RecordingEntity?
 
     init(
@@ -23,6 +27,7 @@ final class SegmentEntity {
         endSec: Double,
         text: String,
         isFinal: Bool,
+        isLikelyEcho: Bool = false,
         recording: RecordingEntity? = nil
     ) {
         self.id = id
@@ -31,6 +36,7 @@ final class SegmentEntity {
         self.endSec = endSec
         self.text = text
         self.isFinal = isFinal
+        self.isLikelyEcho = isLikelyEcho
         self.recording = recording
     }
 }

@@ -144,6 +144,18 @@ struct TranscriptBubble: View {
                 Text(AppFormatters.timestamp(from: segment.startSec))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
+                if segment.isLikelyEcho {
+                    Text("回り込みの可能性")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Theme.Palette.separator, lineWidth: 0.5)
+                        )
+                        .accessibilityLabel("マイクが相手の声を拾った可能性があります")
+                }
             }
             .foregroundStyle(.secondary)
 
@@ -165,6 +177,8 @@ struct TranscriptBubble: View {
                     .foregroundStyle(.secondary)
             }
         }
+        // 回り込み判定セグメントは透過度を落として「副次的な情報」感を出す。
+        .opacity(segment.isLikelyEcho ? 0.55 : 1.0)
     }
 
     private var speakerLabel: String {

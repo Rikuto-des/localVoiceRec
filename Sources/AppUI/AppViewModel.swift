@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import Contracts
+import TranscriptionKit
 
 /// UI 層からのエラー文表示用ロガー。詳細な enum case 名は os.log にのみ残し、
 /// `lastError` には日本語の actionable メッセージだけを入れる方針。
@@ -525,7 +526,10 @@ public final class AppViewModel {
             }
             // isFinal == true のものを優先。0 件なら collected を fallback（UX 退行防止）。
             let finalized = collected.filter(\.isFinal).sorted { $0.startSec < $1.startSec }
-            let toPersist = finalized.isEmpty ? collected.sorted { $0.startSec < $1.startSec } : finalized
+            let preDedup = finalized.isEmpty ? collected.sorted { $0.startSec < $1.startSec } : finalized
+            // File-based 経路では cross-channel echo を検出してマーク。
+            // (Live 経路では全 segment が揃わないため、ここでは適用しない)
+            let toPersist = SegmentDeduplicator.markEchoes(segments: preDedup)
 
             if toPersist.isEmpty {
                 // 完全に何も拾えなかった = 無音か未対応言語の可能性。既存データは消さない。
