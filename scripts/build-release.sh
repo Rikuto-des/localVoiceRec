@@ -61,7 +61,18 @@ xattr -cr "$APP"
 ENTITLEMENTS="App/localVoiceRec.entitlements"
 
 if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
-    SIGN_IDENTITY="Developer ID Application: ${DEVELOPMENT_TEAM}"
+    # Keychain から該当 team の Developer ID Application 証明書 SHA-1 を取得。
+    # `security find-identity` は "SHA1  "Name (TEAM_ID)"" 形式で出すので、TEAM_ID で grep。
+    SIGN_IDENTITY=$(security find-identity -v -p codesigning \
+        | grep "Developer ID Application" \
+        | grep "(${DEVELOPMENT_TEAM})" \
+        | head -1 \
+        | awk -F'"' '{print $2}')
+    if [[ -z "$SIGN_IDENTITY" ]]; then
+        echo "(error) Developer ID Application 証明書が Keychain に見つかりません (team=${DEVELOPMENT_TEAM})"
+        echo "        Xcode → Settings → Accounts → Manage Certificates から Developer ID Application を作成してください。"
+        exit 1
+    fi
     echo "==> codesign with: $SIGN_IDENTITY"
     # --deep は非推奨だが、SwiftPM の動的フレームワークを含むため使用。
     # 個別署名にしたい場合は Frameworks 配下を for ループで先に署名すること。
@@ -71,6 +82,11 @@ if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
         --timestamp \
         --deep \
         "$APP"
+    # iCloud File Provider (Desktop/Documents 同期) が署名後に
+    # com.apple.FinderInfo / fileprovider#P を再付与することがある。
+    # verify 前にもう一度掃除する。
+    echo "==> xattr -cr (post-sign cleanup)"
+    xattr -cr "$APP"
     echo "==> codesign --verify --deep --strict"
     codesign --verify --deep --strict --verbose=2 "$APP"
 else
