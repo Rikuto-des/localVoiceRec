@@ -51,14 +51,6 @@ struct AudioCaptureServiceImplTests {
         }
     }
 
-    @Test("prewarm は no-op で完了する")
-    func prewarmDoesNotThrow() async {
-        let svc = AudioCaptureServiceImpl()
-        await svc.prewarm()
-        let state = await svc.currentState
-        #expect(state == .idle)
-    }
-
     @Test("AudioTapError → AudioCaptureError の翻訳")
     func errorTranslation() {
         #expect(

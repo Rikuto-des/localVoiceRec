@@ -21,13 +21,6 @@ struct FoundationModelsSummaryServiceTests {
         }
     }
 
-    @Test("prewarm() は availability に関わらず例外を投げない")
-    func prewarmDoesNotThrow() async {
-        let svc = FoundationModelsSummaryService()
-        await svc.prewarm()
-        #expect(Bool(true))
-    }
-
     @Test("flatten は isFinal=true のみを含み、source と text を結合する")
     func flattenFiltersAndJoins() {
         let rid = UUID()

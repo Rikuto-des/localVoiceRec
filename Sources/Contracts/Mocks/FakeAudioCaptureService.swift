@@ -40,8 +40,6 @@ public actor FakeAudioCaptureService: AudioCaptureService {
         continuation.yield(next)
     }
 
-    public func prewarm() async {}
-
     public func authorizationStatus() async -> AudioAuthorizationStatus {
         AudioAuthorizationStatus(microphone: .authorized, systemAudio: .authorized)
     }

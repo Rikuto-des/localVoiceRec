@@ -12,10 +12,6 @@ import Foundation
 ///   `AVAudioConverter` により `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)`
 ///   に合わせて変換する（変換責務は TranscriptionService 側）
 public protocol AudioCaptureService: Sendable {
-    /// 重いリソース（process tap, aggregate device, mic engine）を事前に確保しておく。
-    /// 初回録音のレイテンシを下げるため、アプリ起動時の余裕タイミングで呼ぶ。
-    func prewarm() async
-
     /// マイクとシステム音声の権限状況を取得。
     func authorizationStatus() async -> AudioAuthorizationStatus
 

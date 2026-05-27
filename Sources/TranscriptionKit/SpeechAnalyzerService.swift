@@ -25,21 +25,6 @@ public actor SpeechAnalyzerService: TranscriptionService {
 
     // MARK: - TranscriptionService
 
-    public func prewarm(locale: Locale) async throws {
-        guard let resolved = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
-            throw TranscriptionError.unsupportedLocale(identifier: locale.identifier)
-        }
-        let transcriber = SpeechTranscriber(locale: resolved, preset: .transcription)
-
-        do {
-            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-                try await request.downloadAndInstall()
-            }
-        } catch {
-            throw TranscriptionError.assetInstallationFailed(message: String(describing: error))
-        }
-    }
-
     public func installedLocales() async -> [Locale] {
         await SpeechTranscriber.installedLocales
     }
@@ -67,6 +52,27 @@ public actor SpeechAnalyzerService: TranscriptionService {
             task.cancel()
         }
         activeTasks.removeAll()
+    }
+
+    // MARK: - Asset management
+
+    /// 指定 locale の on-device asset をインストールする（必要なら DL する）。
+    ///
+    /// プロトコルではなく具象型の API。アプリ起動時の事前ロードに使う。
+    /// 初回呼び出しから推論までのレイテンシを下げる。
+    public func installAsset(for locale: Locale) async throws {
+        guard let resolved = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
+            throw TranscriptionError.unsupportedLocale(identifier: locale.identifier)
+        }
+        let transcriber = SpeechTranscriber(locale: resolved, preset: .transcription)
+
+        do {
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await request.downloadAndInstall()
+            }
+        } catch {
+            throw TranscriptionError.assetInstallationFailed(message: String(describing: error))
+        }
     }
 
     // MARK: - Driver

@@ -14,10 +14,6 @@ import Foundation
 ///   ネットワーク不要。Asset DL は別 API (`AssetInventory.assetInstallationRequest`) で
 ///   管理者が事前に行う運用とする
 public protocol TranscriptionService: Sendable {
-    /// SpeechAnalyzer / SpeechTranscriber を初期化してモデルをロード。
-    /// 初回呼び出しから推論までのレイテンシを下げる。
-    func prewarm(locale: Locale) async throws
-
     /// 端末にインストール済みで使える locale 一覧。
     /// アプリ UI で「日本語/英語」を選ばせる前に確認する。
     func installedLocales() async -> [Locale]

@@ -160,17 +160,6 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         stateContinuation.yield(next)
     }
 
-    // MARK: - prewarm
-
-    /// `MicCapture` と `SystemAudioTap` を「インスタンス化だけ」しておくことで
-    /// 初回録音時のレイテンシを下げる。`SystemAudioTap.init` は軽量 (HAL を叩かない)。
-    /// 実 `start()` は録音開始まで遅延させる (TCC プロンプトを意図せず出さないため)。
-    public func prewarm() async {
-        // 現状は no-op。`SystemAudioTap()` / `MicCapture()` をここで生成して保持しても
-        // hold するだけではほぼ効果が無く、誤って `start()` するとプロンプトが出るリスクがあるため。
-        // 将来、ハードウェア probe (e.g. inputFormat 取得) を行う場合の hook として残す。
-    }
-
     // MARK: - Authorization
 
     public func authorizationStatus() async -> AudioAuthorizationStatus {

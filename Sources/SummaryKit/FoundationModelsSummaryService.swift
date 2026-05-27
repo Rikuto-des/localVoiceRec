@@ -87,12 +87,6 @@ public actor FoundationModelsSummaryService: SummaryService {
         }
     }
 
-    public func prewarm() async {
-        // セッションを保持し prewarm（少なくとも 1 秒前に呼ぶこと、と公式ガイド）
-        let s = ensureSession()
-        s.prewarm()
-    }
-
     public func generate(
         from segments: [TranscriptSegment],
         recordingID: UUID

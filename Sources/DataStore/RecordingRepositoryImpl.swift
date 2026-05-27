@@ -43,13 +43,6 @@ public actor RecordingRepositoryImpl: RecordingRepository {
         )
     }
 
-    // MARK: - Lifecycle
-
-    public func prewarm() async {
-        // ModelContext の lazy 生成を起こす。失敗してもベストエフォート。
-        _ = context
-    }
-
     // MARK: - Recording
 
     public func create(_ recording: Recording) async throws {

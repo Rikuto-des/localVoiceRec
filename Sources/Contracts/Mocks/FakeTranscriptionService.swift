@@ -8,8 +8,6 @@ public actor FakeTranscriptionService: TranscriptionService {
         self.samples = samples
     }
 
-    public func prewarm(locale: Locale) async throws {}
-
     public func installedLocales() async -> [Locale] {
         [Locale(identifier: "ja-JP"), Locale(identifier: "en-US")]
     }

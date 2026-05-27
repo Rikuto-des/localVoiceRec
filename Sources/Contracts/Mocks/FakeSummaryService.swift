@@ -9,7 +9,6 @@ public actor FakeSummaryService: SummaryService {
     }
 
     public func availability() async -> SummaryAvailability { configuredAvailability }
-    public func prewarm() async {}
 
     public func generate(
         from segments: [TranscriptSegment],
