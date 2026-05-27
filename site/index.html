@@ -45,7 +45,7 @@
         </svg>
         localVoiceRec
       </div>
-      <div class="globalnav-meta">v0.1.9 · macOS 26 / Apple Silicon</div>
+      <div class="globalnav-meta">v0.1.0 · macOS 26 / Apple Silicon</div>
     </div>
   </div>
 </header>
@@ -255,30 +255,30 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
     </p>
     <div class="download-card">
       <div class="download-version-row">
-        <p class="download-version">version 0.1.9</p>
-        <p class="download-build">build 10 · 2026-05-27</p>
+        <p class="download-version">version 0.1.0</p>
+        <p class="download-build">build 1 · 2026-05-27</p>
       </div>
       <div class="download-cta">
-        <a class="btn-pill btn-pill-primary" href="/downloads/localVoiceRec-0.1.9.dmg" download>
+        <a class="btn-pill btn-pill-primary" href="/downloads/localVoiceRec-0.1.0.dmg" download>
           .dmg をダウンロード
           <span class="arrow">↓</span>
         </a>
-        <span style="font-size: 12px; color: var(--text-3);">932 KB · macOS 26+</span>
+        <span style="font-size: 12px; color: var(--text-3);">macOS 26+</span>
       </div>
 
       <span class="download-hash-label">SHA-256</span>
-      <code class="download-hash" id="sha">faa6caabda93e720df2bab0ba3f533c19317c65369a48969b3ee622f4275d18c</code>
+      <code class="download-hash" id="sha">（リリースビルド時に更新されます）</code>
       <button id="copy-sha" class="btn-copy">SHA をコピー</button>
 
-      <code class="verify-cmd">shasum -a 256 ~/Downloads/localVoiceRec-0.1.9.dmg</code>
+      <code class="verify-cmd">shasum -a 256 ~/Downloads/localVoiceRec-0.1.0.dmg</code>
 
       <div class="download-note">
-        <strong>v0.1.9 の変更点</strong><br />
-        ・波形更新停止バグの修正（メニューを閉じても継続更新）<br />
-        ・専用 App アイコン + DMG マウント画面<br />
-        ・HIG 準拠の UI（青アクセント・Reduce Motion 対応・VoiceOver）<br />
-        ・「録音一覧を開く」が確実に最前面に来る挙動<br />
-        ・文字起こしの致命バグ修正（AVAudioConverter 状態リーク）
+        <strong>v0.1.0 — 初回リリース</strong><br />
+        ・マイク + システム音声の 2 チャンネル録音<br />
+        ・SpeechAnalyzer によるオンデバイス文字起こし<br />
+        ・Foundation Models によるオンデバイス構造化要約<br />
+        ・録音一覧 / 詳細表示 / Markdown・テキストエクスポート<br />
+        ・ネットワーク権限ゼロ — App Sandbox + Developer ID 署名 + Notarization 済み
       </div>
     </div>
   </div>
