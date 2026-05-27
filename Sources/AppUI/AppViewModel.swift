@@ -116,12 +116,36 @@ public final class AppViewModel {
         stateSubscriptionTask = task
     }
 
+    // MARK: - Intents: Permissions
+
+    /// マイク（および可能ならシステム音声）の権限プロンプトを明示的に出す。
+    /// `.notDetermined` のときに OS ダイアログを表示する目的。
+    /// 既に `.authorized` / `.denied` なら no-op に近い（再描画用に diagnostics は更新）。
+    public func requestAudioPermissions() async {
+        _ = await capture.requestAuthorization()
+        // system audio (Core Audio process tap) は事前 API が無く、
+        // 初回の `capture.start()` で OS プロンプトが出る。
+        await refreshDiagnostics()
+    }
+
     // MARK: - Intents: Recording lifecycle
 
     public func startRecording() async {
         isBusy = true
         defer { isBusy = false }
         do {
+            // 権限が未要求なら先に OS プロンプトを出す（録音が無音になる事故を防ぐ）
+            let current = await capture.authorizationStatus()
+            if current.microphone == .notDetermined {
+                _ = await capture.requestAuthorization()
+            }
+            // 拒否されていたらここで中断
+            let after = await capture.authorizationStatus()
+            if after.microphone == .denied {
+                lastError = "マイク権限が拒否されています。診断パネルから設定を開いて許可してください。"
+                await refreshDiagnostics()
+                return
+            }
             let id = UUID()
             let dir = try AppPaths.recordingDirectory(for: id)
             _ = try await capture.start(in: dir, title: nil)

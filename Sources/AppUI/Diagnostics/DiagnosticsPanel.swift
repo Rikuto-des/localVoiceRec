@@ -52,6 +52,17 @@ struct DiagnosticsPanel: View {
                     value: stateLabel(viewModel.diagnostics.systemAudioAuthorization),
                     isWarning: viewModel.diagnostics.systemAudioAuthorization != .authorized
                 )
+
+                // 未要求のときは権限プロンプトを出すボタンを表示
+                if viewModel.diagnostics.micAuthorization == .notDetermined ||
+                   viewModel.diagnostics.systemAudioAuthorization == .notDetermined {
+                    permissionHelpBox
+                }
+                // 拒否済みのときは設定アプリへの誘導
+                if viewModel.diagnostics.micAuthorization == .denied ||
+                   viewModel.diagnostics.systemAudioAuthorization == .denied {
+                    deniedHelpBox
+                }
             }
             section(title: "文字起こし") {
                 if viewModel.diagnostics.installedLocales.isEmpty {
@@ -144,13 +155,62 @@ struct DiagnosticsPanel: View {
         }
     }
 
+    // MARK: - Permission help boxes
+
+    @ViewBuilder
+    private var permissionHelpBox: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text("OS にまだ権限を問い合わせていません。下のボタンを押すと、マイクとシステム音声録音の権限ダイアログが表示されます。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button {
+                    Task { await viewModel.requestAudioPermissions() }
+                } label: {
+                    Label("権限を要求する", systemImage: "checkmark.shield")
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(.top, Theme.Spacing.xs)
+    }
+
+    @ViewBuilder
+    private var deniedHelpBox: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text("一度「拒否」した権限は、システム設定からのみ許可に変更できます。")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button {
+                    openSystemSettings()
+                } label: {
+                    Label("システム設定を開く", systemImage: "gearshape")
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(.top, Theme.Spacing.xs)
+    }
+
+    private func openSystemSettings() {
+        // プライバシー設定 → マイク
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     // MARK: - Formatting
 
     private func stateLabel(_ state: AudioAuthorizationStatus.State) -> String {
         switch state {
-        case .authorized: return "許可"
+        case .authorized: return "許可済み"
         case .denied: return "拒否"
-        case .notDetermined: return "未確認"
+        case .notDetermined: return "未要求"
         }
     }
 

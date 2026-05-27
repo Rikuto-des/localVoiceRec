@@ -42,6 +42,15 @@ struct LocalVoiceRecApp: App {
         Task.detached { await repository.prewarm() }
         Task.detached { await summary.prewarm() }
         // TranscriptionService.prewarm は locale が必要で throws するため、UI 操作起点に委ねる
+
+        // 初回起動でマイク権限プロンプトを早めに出す（録音前にユーザーに気付かせる）
+        // notDetermined のときだけ要求。authorized/denied なら no-op。
+        Task.detached {
+            let status = await capture.authorizationStatus()
+            if status.microphone == .notDetermined {
+                _ = await capture.requestAuthorization()
+            }
+        }
     }
 
     var body: some Scene {
