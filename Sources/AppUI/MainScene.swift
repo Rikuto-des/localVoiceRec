@@ -97,7 +97,8 @@ private struct MenuBarLabel: View {
                         .symbolEffect(.pulse, options: reduceMotion ? .nonRepeating : .repeating)
                         .accessibilityLabel("処理中")
                 } else {
-                    Image(systemName: "mic.fill")
+                    Image("MenubarMark", bundle: .main)
+                        .renderingMode(.template)
                         .accessibilityLabel("localVoiceRec")
                 }
             }

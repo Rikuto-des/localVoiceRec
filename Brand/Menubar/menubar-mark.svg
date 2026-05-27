@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  localVoiceRec — menu bar template icon
+  Style: monochrome silhouette, template image (macOS auto-tints to system color)
+  Canvas: 22x22 (Apple HIG menubar height ~22pt)
+  Brand alignment: matches Brand/Logo/logo-mark.svg silhouette (5 bars + dot)
+  Stroke: pure black fill, alpha 0 background. macOS NSImage isTemplate=true
+  inverts color for dark menubar and tints for highlight state.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
+  <g fill="#000000">
+    <!-- 5-bar waveform, slightly slimmer than brand mark for small-size legibility -->
+    <rect x="3.5"  y="9.5"  width="2" height="6"  rx="1"   ry="1"/>
+    <rect x="6.75" y="7"    width="2" height="11" rx="1"   ry="1"/>
+    <rect x="10"   y="4.5"  width="2.25" height="15" rx="1.125" ry="1.125"/>
+    <rect x="13.5" y="7.5"  width="2" height="9.5"  rx="1"   ry="1"/>
+    <rect x="16.75" y="10"  width="2" height="5"  rx="1"   ry="1"/>
+    <!-- recording dot (top-right) — kept as a solid mark to preserve brand silhouette -->
+    <circle cx="17.5" cy="5" r="2"/>
+  </g>
+</svg>
