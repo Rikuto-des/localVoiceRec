@@ -1,5 +1,8 @@
 import SwiftUI
 import Contracts
+#if DEBUG
+import ContractsTestSupport
+#endif
 
 /// 録音一覧ウィンドウのウィンドウ ID。
 let RecordingListWindowID = "recording-list"
@@ -246,6 +249,7 @@ private extension RecordingStatus {
     }
 }
 
+#if DEBUG
 #Preview("With recordings") {
     RecordingListView(
         viewModel: makePreviewViewModel(seed: [
@@ -294,3 +298,4 @@ private func makePreviewViewModel(seed: [Recording]) -> AppViewModel {
         summary: FakeSummaryService()
     )
 }
+#endif

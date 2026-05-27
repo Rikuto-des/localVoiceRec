@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 /// プロセス内メモリで状態を持つ Repository。
 /// UI Previews / S2 並列開発で UI が単独動作するために使う。

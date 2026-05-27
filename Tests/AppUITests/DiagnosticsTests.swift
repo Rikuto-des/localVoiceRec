@@ -2,6 +2,7 @@ import Testing
 import Foundation
 @testable import AppUI
 import Contracts
+import ContractsTestSupport
 
 /// 診断情報 / 一括 retry の挙動を検証する。
 @MainActor

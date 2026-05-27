@@ -24,10 +24,12 @@ struct LocalVoiceRecApp: App {
         do {
             repository = try DataStoreModule.makeRepository()
         } catch {
-            // Repository の初期化失敗は致命的。フォールバックで InMemory に逃がしてアプリは起動する
-            // （UI 上で「ストア利用不可」を見せる方が監査しやすい）
+            // Repository の初期化失敗は致命的。書き込み不可な専用 repository に逃がし、
+            // UI 上で「録音不可 / ストア利用不可」を確認可能な状態にする。
+            // 旧実装の InMemoryRecordingRepository フォールバックは本番バイナリに
+            // Mock コードを残してしまうため、AppUI 内の UnavailableRecordingRepository に差し替え。
             assertionFailure("DataStoreModule.makeRepository failed: \(error)")
-            repository = InMemoryRecordingRepository()
+            repository = UnavailableRecordingRepository()
         }
         let transcription = TranscriptionKitModule.makeService()
         let summary = SummaryKitModule.makeService()

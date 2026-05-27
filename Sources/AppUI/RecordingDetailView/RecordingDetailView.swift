@@ -2,6 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Contracts
 import AppKit
+#if DEBUG
+import ContractsTestSupport
+#endif
 
 /// 個別録音の詳細ビュー。
 ///
@@ -242,6 +245,7 @@ struct MinutesExportDocument: FileDocument {
 
 // MARK: - Previews
 
+#if DEBUG
 #Preview("With data") {
     let vm = AppViewModel(
         capture: FakeAudioCaptureService(),
@@ -282,3 +286,4 @@ private func previewRepository() -> InMemoryRecordingRepository {
     }
     return repo
 }
+#endif

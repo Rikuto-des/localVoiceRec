@@ -2,6 +2,7 @@ import Testing
 import Foundation
 @testable import AppUI
 import Contracts
+import ContractsTestSupport
 
 /// `LiveWaveformView` の history buffer 挙動を確認する。
 ///

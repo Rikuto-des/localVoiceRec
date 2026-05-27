@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 /// SwiftUI Previews / S2 並列開発 / テストで使うサンプル値。
 public enum SampleData {

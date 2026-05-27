@@ -1,5 +1,8 @@
 import SwiftUI
 import Contracts
+#if DEBUG
+import ContractsTestSupport
+#endif
 
 /// 録音中のリアルタイム波形ビュー。
 ///
@@ -210,6 +213,7 @@ private extension Double {
     }
 }
 
+#if DEBUG
 #Preview("Live waveform (Mock)") {
     let capture = FakeAudioCaptureService()
     let vm = AppViewModel(
@@ -226,3 +230,4 @@ private extension Double {
             _ = try? await capture.start(in: URL(fileURLWithPath: NSTemporaryDirectory()), title: "preview")
         }
 }
+#endif

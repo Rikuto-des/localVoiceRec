@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: [
         .library(name: "Contracts", targets: ["Contracts"]),
+        .library(name: "ContractsTestSupport", targets: ["ContractsTestSupport"]),
         .library(name: "AudioTapKit", targets: ["AudioTapKit"]),
         .library(name: "AudioCapture", targets: ["AudioCapture"]),
         .library(name: "DataStore", targets: ["DataStore"]),
@@ -20,6 +21,11 @@ let package = Package(
         .target(
             name: "Contracts",
             path: "Sources/Contracts"
+        ),
+        .target(
+            name: "ContractsTestSupport",
+            dependencies: ["Contracts"],
+            path: "Sources/ContractsTestSupport"
         ),
 
         // ─── Phase 0 / Phase 1 audio ───
@@ -56,7 +62,7 @@ let package = Package(
         // ─── UI ───
         .target(
             name: "AppUI",
-            dependencies: ["Contracts"],
+            dependencies: ["Contracts", "ContractsTestSupport"],
             path: "Sources/AppUI"
         ),
 
@@ -78,7 +84,7 @@ let package = Package(
         // ─── Tests (placeholder; populated as modules mature) ───
         .testTarget(
             name: "ContractsTests",
-            dependencies: ["Contracts"],
+            dependencies: ["Contracts", "ContractsTestSupport"],
             path: "Tests/ContractsTests"
         ),
         .testTarget(
@@ -108,7 +114,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AppUITests",
-            dependencies: ["AppUI", "Contracts"],
+            dependencies: ["AppUI", "Contracts", "ContractsTestSupport"],
             path: "Tests/AppUITests"
         ),
         .testTarget(

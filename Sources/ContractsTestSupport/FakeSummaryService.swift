@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 /// Foundation Models を叩かない偽 SummaryService。
 public actor FakeSummaryService: SummaryService {

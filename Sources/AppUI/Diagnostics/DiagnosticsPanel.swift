@@ -1,5 +1,8 @@
 import SwiftUI
 import Contracts
+#if DEBUG
+import ContractsTestSupport
+#endif
 
 /// 折りたたみ式の診断パネル。
 ///
@@ -300,6 +303,7 @@ struct DiagnosticsPanel: View {
     }
 }
 
+#if DEBUG
 #Preview("Diagnostics") {
     DiagnosticsPanel(
         viewModel: AppViewModel(
@@ -326,3 +330,4 @@ struct DiagnosticsPanel: View {
     .frame(width: 360)
     .preferredColorScheme(.dark)
 }
+#endif

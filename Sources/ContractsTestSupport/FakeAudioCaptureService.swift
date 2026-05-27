@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 /// 録音ハードウェアを叩かない偽 AudioCaptureService。
 /// UI 開発時にメニューバーから「開始」「停止」を操作できるだけのスタブ。

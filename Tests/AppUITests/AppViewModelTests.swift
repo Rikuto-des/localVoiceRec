@@ -2,6 +2,7 @@ import Testing
 import Foundation
 @testable import AppUI
 import Contracts
+import ContractsTestSupport
 
 /// `AppViewModel` の状態遷移を Mock service で検証する。
 @MainActor

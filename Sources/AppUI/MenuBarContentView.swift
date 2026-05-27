@@ -1,6 +1,9 @@
 import SwiftUI
 import AppKit
 import Contracts
+#if DEBUG
+import ContractsTestSupport
+#endif
 
 /// メニューバーをクリックしたときに表示される小ウィンドウ。
 ///
@@ -267,6 +270,7 @@ struct MenuBarContentView: View {
     }
 }
 
+#if DEBUG
 #Preview("Idle") {
     let capture = FakeAudioCaptureService()
     return MenuBarContentView(
@@ -293,3 +297,4 @@ struct MenuBarContentView: View {
     )
     .preferredColorScheme(.dark)
 }
+#endif

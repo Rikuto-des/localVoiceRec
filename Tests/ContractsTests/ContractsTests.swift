@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Contracts
+import ContractsTestSupport
 
 @Suite("InMemoryRecordingRepository")
 struct InMemoryRepoTests {

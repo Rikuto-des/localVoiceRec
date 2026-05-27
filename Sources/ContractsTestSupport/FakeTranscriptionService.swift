@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 /// SpeechAnalyzer を叩かない偽 TranscriptionService。サンプルセグメントを yield するだけ。
 public actor FakeTranscriptionService: TranscriptionService {
