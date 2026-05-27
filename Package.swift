@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "AppUI", targets: ["AppUI"]),
         .library(name: "ExportKit", targets: ["ExportKit"]),
         .executable(name: "AudioTapPoC", targets: ["AudioTapPoC"]),
+        .executable(name: "E2EProbe", targets: ["E2EProbe"]),
     ],
     targets: [
         // ─── Foundational ───
@@ -73,6 +74,13 @@ let package = Package(
             dependencies: ["AudioTapKit"],
             path: "Tools/AudioTapPoC",
             exclude: ["output"]
+        ),
+
+        // ─── E2E Probe CLI (S9) — PoC 出力を transcribe + summarize して stdout に出す ───
+        .executableTarget(
+            name: "E2EProbe",
+            dependencies: ["Contracts", "TranscriptionKit", "SummaryKit"],
+            path: "Tools/E2EProbe"
         ),
 
         // ─── Tests (placeholder; populated as modules mature) ───

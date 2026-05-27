@@ -189,3 +189,118 @@ source bit depth: F32
 - 手動 UI シナリオ: `docs/manual-test-plan.md` を参照
 - リリース観点の verify チェックリスト: `docs/verify-checklist.md` を参照
   - s5a Security Auditor の `docs/release-checklist.md` が後で作成された場合は、そちらにマージしてこのファイルを削除する想定
+
+---
+
+## S9 検証 (v0.1.1)
+
+| 項目 | 値 |
+| ---- | --- |
+| 実施日 | 2026-05-27 |
+| ブランチ | `main` |
+| バージョン | 0.1.1 (S8 fix 後) |
+| Swift toolchain | swift-tools-version 6.0 / Swift 6.2.3 / Xcode 26.5 |
+| Platform | macOS 26.0 (arm64e-apple-macos14.0) |
+| 実機 | Apple Silicon |
+
+### A. `swift test` 全件再走
+
+- **総テスト数**: 68 (S5-B から +11、本 S9 で +3)
+- **総 Suite 数**: 17 (本 S9 で +1)
+- **合格**: 68 / **失敗**: 0
+- **実行時間**: ~2.95 秒 (テスト本体) / 増分ビルド込みで ~5 秒
+
+S5-B 以降に追加された S6/S7/S8 関連テスト・本 S9 で追加した `AVAudioFile partial read — S8 regression` (3 件) を含め、全 suite が pass。
+
+### B. PoC 30 秒録音 → E2E (transcribe + summarize)
+
+#### 30 秒 PoC 実行ログ抜粋
+
+```
+$ POC_DURATION=30 swift run AudioTapPoC
+[AudioTapPoC] Capture duration: 30.0 s
+[AudioTapPoC] Mic started. format = <AVAudioFormat: 1 ch, 44100 Hz, Float32>
+[AudioTapPoC] System tap started. format = <AVAudioFormat: 2 ch, 48000 Hz, Float32, interleaved>
+[AudioTapPoC] mic.wav: frames=1336230, duration=30.300 s
+[AudioTapPoC] system.wav: frames=1456320, duration=30.340 s
+[AudioTapPoC] Real elapsed: 30.518 s / Drift mic=-0.218 s, sys=-0.178 s
+[AudioTapPoC] Tap dropped pushes (ring full): 0
+```
+
+ドリフトは S5-B (5s) より絶対値が大きいが相対的には改善傾向 (5s で -0.3〜-0.44s → 30s で -0.18〜-0.22s)。
+
+#### IntegrationTests 実行
+
+`Tests/IntegrationTests/PoCTranscribeIntegrationTests.swift` が 30s WAV 経由で pass:
+
+```
+􁁛 Suite "Integration — PoC → SpeechAnalyzer" passed after 1.165 seconds.
+```
+
+- pipeline 全体が落ちずに stream を最後まで回しきること: ✅ (`fileNotReadable` も出ず)
+- S5-B 時点では `fileNotReadable` で拒否されていたが、S8 fix で読めるようになった
+- 今回録音は **無音 (環境音のみ)** だったため最終 segments は 0 件。`mic.wav` / `system.wav` 両方を analyzer に流し込めて、analyzer が clean に終端することは確認
+
+なお、S8 fix 検証時に取得した参考ログでは `[mic] 0.0-0.487625: あ` が yield されており、発話が含まれる WAV ではテキストが出ることを確認済み。
+
+#### `Tools/E2EProbe/` の追加
+
+`POC` 出力を読み → `SpeechAnalyzerService.transcribe` → `FoundationModelsSummaryService.generate` を直列に走らせる CLI を `Tools/E2EProbe/main.swift` に追加 (`Package.swift` の executable target としても登録)。
+
+実行コマンド: `swift run E2EProbe`
+
+実行ログ抜粋 (60s WAV 入力時):
+
+```
+[E2EProbe] installedLocales count = 1
+[E2EProbe] Transcribe finished in 1.523 s, segments = 0
+[E2EProbe] Summary availability = available
+[E2EProbe] No final segments — skipping summary generation.
+```
+
+- ✅ transcribe / availability チェック / summary 呼び出しのフロー実装が build & link 通過
+- ✅ `SpeechAnalyzerService` は 60 秒分の入力を **1.523 秒** で読み切る (real-time factor ≈ 0.025x)
+- ⚠️ 検証時の WAV が無音だったため、Summary 実機実行までは到達せず (final segments = 0 で early return)。
+  Summary E2E は `SummaryKitTests` の `FoundationModelsSummaryServiceTests "実機で .available の場合に最小入力で要約が返る"` が `available` パスで pass (2.95 s) しており、別経路で確認済み。
+
+### C. AVAudioFile partial read 回帰テスト
+
+`Tests/TranscriptionKitTests/AVAudioFilePartialReadTests.swift` を新規追加 (3 ケース、すべて pass):
+
+| ケース | 内容 | 結果 |
+| ----- | ---- | ---- |
+| `partialReadAtEOFSucceeds` | totalFrames=100_123 (capacity=24000 の倍数で割り切れない) → 末尾 partial で全 frame 読破 | ✅ pass (0.051 s) |
+| `exactCapacityMultipleStops` | totalFrames=48_000 (capacity ちょうど 2 倍) で EOF が正常に止まる | ✅ pass (0.033 s) |
+| `smallerThanCapacityCompletes` | totalFrames=5_000 (capacity 未満) で 1 回の partial read で完了 | ✅ pass |
+
+`feedAudioFile` が `private static` のため、**同等ロジックを再現したテスト内ヘルパ `readAllFrames(url:)`** を持たせている (`残量 = audioFile.length - framePosition` から `frameCount` を明示的に計算)。フィクスチャ WAV は PoC と同形式 (Float32 / 2ch / 48 kHz / interleaved) を `AVAudioFile(forWriting:)` で生成し、サイン波で埋めている。
+
+> 将来 `SpeechAnalyzerService` 側に `internal static func readAllFrames(url:) throws -> AVAudioFramePosition` を切り出せば、テスト内ヘルパは消せる。S9 では Sources/ 編集禁止のため、テスト内に閉じた回帰テストとして実装。
+
+### D. メモリ / CPU 簡易プロファイル
+
+`/usr/bin/time -l swift run E2EProbe` で 60 秒入力の文字起こしを 1 回計測:
+
+| 指標 | 値 |
+| ---- | --- |
+| Transcribe 実時間 (60s 入力) | 1.523 秒 |
+| Real (wall) | 2.51 秒 (build/load 含む) |
+| User CPU | 0.15 秒 |
+| Sys CPU | 0.07 秒 |
+| Max RSS | 21,659,648 bytes (≈ 20.7 MiB) |
+| Peak memory footprint | 7,209,608 bytes (≈ 6.9 MiB) |
+| Page reclaims | 7,800 |
+| Voluntary ctx switches | 6 / Involuntary | 1,179 |
+| Instructions retired | 3.14 G |
+| Cycles | 928 M |
+
+- 60 秒の WAV を **1.5 秒** で食い切り、最大 RSS は 22 MB 程度。leak 兆候なし。
+- 60 秒録音時の PoC 自体は CPU 1.7% / 60.888 秒 wall / dropped pushes = 0 で長時間動作も安定。
+
+### E. 補足: 変更ファイル一覧 (Sources/ は無編集)
+
+- `Tests/TranscriptionKitTests/AVAudioFilePartialReadTests.swift` (新規)
+- `Tools/E2EProbe/main.swift` (新規)
+- `Package.swift` (E2EProbe executable target 追加)
+- `docs/test-report.md` (本セクション追加)
+
