@@ -8,8 +8,19 @@ import AppKit
 ///
 /// 文字起こし（mic = 右寄せ / system = 左寄せのチャットスタイル）と
 /// 構造化要約を縦並びで表示する。
+///
+/// ## HIG 準拠ポイント (S16-A)
+/// - Typography: title2 → headline → subheadline → body → footnote → caption の階層
+/// - セクションヘッダは `Label("...", systemImage:)` + `.headline` で統一
+/// - カードは `Theme.Palette.surfaceSecondary`、適切な箇所は `.regularMaterial`
+/// - 主操作 (再生成・エクスポート) は `.bordered` + `.controlSize(.small)`
+/// - 破壊的操作には `role: .destructive`
+/// - すべてのボタンに `.help()`
+/// - Reduce Motion 環境変数を尊重
 struct RecordingDetailView: View {
     @Bindable var viewModel: AppViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var regenerateHint: String = ""
     @State private var showHintField: Bool = false
     @State private var showTranscribeReconfirm: Bool = false
@@ -24,6 +35,8 @@ struct RecordingDetailView: View {
     @State private var exportFormat: ExportFormat = .markdown
     @State private var exportSuggestedName: String = "minutes"
     @State private var isPreparingExport: Bool = false
+
+    @State private var isWaveformExpanded: Bool = true
 
     var body: some View {
         ScrollView {
@@ -42,9 +55,48 @@ struct RecordingDetailView: View {
         .navigationTitle(viewModel.selectedRecording?.title ?? "詳細")
     }
 
-    // MARK: - Waveform
+    // MARK: - Header
 
-    @State private var isWaveformExpanded: Bool = true
+    private func header(recording: Recording) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(recording.title)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Spacer()
+                Button {
+                    FinderReveal.openRecordingFolder(for: recording)
+                } label: {
+                    Label("Finder で開く", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("録音ファイルが入っているフォルダを Finder で開きます")
+                .accessibilityLabel("Finder で録音フォルダを開く")
+            }
+            HStack(spacing: Theme.Spacing.md) {
+                Label {
+                    Text(AppFormatters.dateTime.string(from: recording.startedAt))
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "calendar")
+                }
+                Label {
+                    Text(AppFormatters.duration(recording.duration))
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "clock")
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    // MARK: - Waveform
 
     private func waveformSection(recording: Recording) -> some View {
         DisclosureGroup(isExpanded: $isWaveformExpanded) {
@@ -57,78 +109,45 @@ struct RecordingDetailView: View {
                 StaticWaveformView(
                     url: recording.systemAudioURL,
                     label: "System（相手）",
-                    tint: .orange
+                    tint: Theme.Palette.warning
                 )
             }
             .padding(.top, Theme.Spacing.sm)
         } label: {
             Label("録音波形", systemImage: "waveform")
-                .font(.subheadline.bold())
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
         }
         .padding(Theme.Spacing.md)
-        .background(
-            Color(nsColor: .controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-        )
-    }
-
-    // MARK: - Header
-
-    private func header(recording: Recording) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack {
-                Text(recording.title)
-                    .font(.title2.bold())
-                Spacer()
-                Button {
-                    FinderReveal.openRecordingFolder(for: recording)
-                } label: {
-                    Label("Finder で開く", systemImage: "folder")
-                }
-                .controlSize(.small)
-                .help("録音ファイルが入っているフォルダを Finder で開く")
-            }
-            HStack(spacing: Theme.Spacing.sm) {
-                Label(
-                    AppFormatters.dateTime.string(from: recording.startedAt),
-                    systemImage: "calendar"
-                )
-                Label(
-                    AppFormatters.duration(recording.duration),
-                    systemImage: "clock"
-                )
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
+        .subtleSurface()
     }
 
     // MARK: - Transcript
 
     private var transcriptSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 sectionHeader(title: "文字起こし", systemImage: "text.bubble")
                 Spacer()
                 transcribeControls
             }
 
             if viewModel.isTranscribingSelected && viewModel.segments.isEmpty {
-                HStack(spacing: Theme.Spacing.sm) {
-                    ProgressView().controlSize(.small)
-                    Text("文字起こしを実行中...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(Theme.Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+                inlineProgress("文字起こしを実行中…")
             } else if viewModel.segments.isEmpty {
                 if let id = viewModel.selectedRecording?.id,
                    viewModel.emptyTranscriptIDs.contains(id) {
-                    emptyBox(message: "音声内容が検出されませんでした。無音または対応言語外の可能性があります。")
+                    emptyBox(
+                        title: "音声内容が検出されませんでした",
+                        message: "無音または対応言語外の可能性があります。",
+                        systemImage: "speaker.slash"
+                    )
                 } else {
-                    emptyBox(message: "文字起こしを準備しています…時間がかかる場合は「文字起こしを実行」を押してください。")
+                    emptyBox(
+                        title: "文字起こしを準備しています",
+                        message: "時間がかかる場合は「文字起こしを実行」を押してください。",
+                        systemImage: "ellipsis.bubble"
+                    )
                 }
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -138,8 +157,8 @@ struct RecordingDetailView: View {
                     if viewModel.isTranscribingSelected {
                         HStack(spacing: Theme.Spacing.xs) {
                             ProgressView().controlSize(.small)
-                            Text("追加の発話を解析中...")
-                                .font(.caption)
+                            Text("追加の発話を解析中…")
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.top, Theme.Spacing.xs)
@@ -157,40 +176,42 @@ struct RecordingDetailView: View {
     private var fullTextSection: some View {
         DisclosureGroup(isExpanded: $isFullTextExpanded) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("Slack や Notion に貼り付けやすい、タイムスタンプ付きプレーンテキストです。")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
                     if let at = fullTextCopyConfirmedAt,
                        Date().timeIntervalSince(at) < 2.0 {
                         Label("コピーしました", systemImage: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                            .transition(.opacity)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.Palette.success)
+                            .transition(reduceMotion ? .identity : .opacity)
+                            .accessibilityLabel("クリップボードにコピーしました")
                     }
                     Button {
                         copyFullTextToPasteboard()
                     } label: {
                         Label("全文をコピー", systemImage: "doc.on.doc")
                     }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(viewModel.segments.isEmpty)
-                    .help("全文をクリップボードへコピー")
+                    .help("全文をクリップボードへコピーします")
                 }
 
                 TextEditor(text: .constant(fullTextString))
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(.body, design: .monospaced))
                     .lineSpacing(2)
                     .frame(minHeight: 140, maxHeight: 320)
                     .padding(Theme.Spacing.xs)
                     .background(
-                        Color(nsColor: .textBackgroundColor),
-                        in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                        Theme.Palette.textField,
+                        in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-                            .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                            .strokeBorder(Theme.Palette.separator, lineWidth: 0.5)
                     )
                     .accessibilityLabel("全文テキスト")
                     .accessibilityHint("選択してコピーできます")
@@ -198,7 +219,8 @@ struct RecordingDetailView: View {
             .padding(.top, Theme.Spacing.sm)
         } label: {
             Label("全文テキスト（コピー用）", systemImage: "text.alignleft")
-                .font(.subheadline.bold())
+                .font(.subheadline)
+                .fontWeight(.semibold)
         }
         .padding(.top, Theme.Spacing.sm)
     }
@@ -226,13 +248,13 @@ struct RecordingDetailView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
             fullTextCopyConfirmedAt = Date()
         }
         // 2 秒後にバッジを消す
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                 // 自分以降に別のコピーが走っていなければ消す
                 if let at = fullTextCopyConfirmedAt, Date().timeIntervalSince(at) >= 2.0 {
                     fullTextCopyConfirmedAt = nil
@@ -256,14 +278,17 @@ struct RecordingDetailView: View {
             }
         } label: {
             if viewModel.isTranscribingSelected {
-                Label("実行中...", systemImage: "ellipsis")
+                Label("実行中…", systemImage: "ellipsis")
             } else if viewModel.segments.isEmpty {
                 Label("文字起こしを実行", systemImage: "waveform.badge.plus")
             } else {
                 Label("再実行", systemImage: "arrow.triangle.2.circlepath")
             }
         }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
         .disabled(viewModel.isTranscribingSelected || viewModel.selectedRecording == nil)
+        .help(viewModel.segments.isEmpty ? "Speech フレームワークで文字起こしを開始します" : "既存の文字起こしを破棄して再実行します")
         .confirmationDialog(
             "文字起こしを再実行しますか？",
             isPresented: $showTranscribeReconfirm,
@@ -286,7 +311,7 @@ struct RecordingDetailView: View {
 
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 sectionHeader(title: "要約", systemImage: "doc.text.magnifyingglass")
                 Spacer()
                 regenerateControls
@@ -295,22 +320,22 @@ struct RecordingDetailView: View {
             availabilityNotice
 
             if viewModel.isSummarizingSelected && viewModel.summaryDocument == nil {
-                HStack(spacing: Theme.Spacing.sm) {
-                    ProgressView().controlSize(.small)
-                    Text("要約を生成中...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(Theme.Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+                inlineProgress("要約を生成中…")
             } else if let summary = viewModel.summaryDocument {
                 summaryContent(summary)
             } else if viewModel.segments.isEmpty {
-                emptyBox(message: "先に文字起こしを実行してください")
+                emptyBox(
+                    title: "要約はまだありません",
+                    message: "先に文字起こしを実行してください。",
+                    systemImage: "doc.text"
+                )
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    emptyBox(message: "要約はまだ生成されていません")
+                    emptyBox(
+                        title: "要約はまだ生成されていません",
+                        message: "「要約を生成」を押すと Apple Intelligence で要約します。",
+                        systemImage: "sparkles"
+                    )
                     Button {
                         Task {
                             if let recording = viewModel.selectedRecording {
@@ -320,7 +345,10 @@ struct RecordingDetailView: View {
                     } label: {
                         Label("要約を生成", systemImage: "sparkles")
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
                     .disabled(viewModel.isSummarizingSelected || !isSummaryAvailable)
+                    .help("Apple Intelligence で要約を生成します")
                 }
             }
         }
@@ -332,11 +360,26 @@ struct RecordingDetailView: View {
         case .available:
             EmptyView()
         case .unavailable(let reason):
-            Label(reasonText(reason), systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(.orange)
-                .padding(Theme.Spacing.sm)
-                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.Palette.warning)
+                    .accessibilityHidden(true)
+                Text(reasonText(reason))
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(Theme.Spacing.sm)
+            .background(
+                Theme.Palette.warning.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                    .strokeBorder(Theme.Palette.warning.opacity(0.4), lineWidth: 0.5)
+            )
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -358,6 +401,7 @@ struct RecordingDetailView: View {
             if showHintField {
                 TextField("ヒント（任意）", text: $regenerateHint)
                     .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
                     .frame(width: 200)
             }
             Button {
@@ -374,21 +418,27 @@ struct RecordingDetailView: View {
             } label: {
                 Label("要約を再生成", systemImage: "arrow.triangle.2.circlepath")
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .disabled(
                 viewModel.isBusy ||
                 viewModel.isSummarizingSelected ||
                 viewModel.segments.isEmpty ||
                 !isSummaryAvailable
             )
+            .help(showHintField ? "ヒントを使って要約を再生成します" : "要約を再生成します（任意でヒントを与えられます）")
 
             if showHintField {
                 Button {
                     showHintField = false
                     regenerateHint = ""
                 } label: {
-                    Image(systemName: "xmark.circle")
+                    Image(systemName: "xmark.circle.fill")
+                        .accessibilityLabel("ヒント入力をキャンセル")
                 }
                 .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("ヒント入力を閉じます")
             }
 
             // ─── Export ───
@@ -397,12 +447,15 @@ struct RecordingDetailView: View {
             } label: {
                 Label("エクスポート", systemImage: "square.and.arrow.up")
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .disabled(
                 viewModel.selectedRecording == nil ||
                 isPreparingExport ||
                 viewModel.isTranscribingSelected ||
                 viewModel.isSummarizingSelected
             )
+            .help("議事録を Markdown / プレーンテキストでエクスポートします")
             .confirmationDialog(
                 "エクスポート形式を選択",
                 isPresented: $showFormatChooser,
@@ -483,6 +536,7 @@ struct RecordingDetailView: View {
             summaryBlock(title: "概要") {
                 Text(summary.overview)
                     .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             summaryBlock(title: "決定事項") {
@@ -491,7 +545,9 @@ struct RecordingDetailView: View {
 
             summaryBlock(title: "アクションアイテム") {
                 if summary.actionItems.isEmpty {
-                    Text("（なし）").foregroundStyle(.secondary).font(.caption)
+                    Text("（なし）")
+                        .foregroundStyle(.secondary)
+                        .font(.footnote)
                 } else {
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                         ForEach(Array(summary.actionItems.enumerated()), id: \.offset) { _, item in
@@ -512,8 +568,9 @@ struct RecordingDetailView: View {
             HStack {
                 Spacer()
                 Text("生成: \(summary.generatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
         }
     }
@@ -524,28 +581,34 @@ struct RecordingDetailView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(title)
-                .font(.subheadline.bold())
+                .font(.subheadline)
+                .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
+                .textCase(nil)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color(nsColor: .controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-        )
+        .subtleSurface()
     }
 
     private func bulletList(_ items: [String]) -> some View {
         Group {
             if items.isEmpty {
-                Text("（なし）").foregroundStyle(.secondary).font(.caption)
+                Text("（なし）")
+                    .foregroundStyle(.secondary)
+                    .font(.footnote)
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                            Text("•").foregroundStyle(.secondary)
+                            Text("•")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                             Text(item)
+                                .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -558,23 +621,56 @@ struct RecordingDetailView: View {
     private func sectionHeader(title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .font(.headline)
+            .accessibilityAddTraits(.isHeader)
     }
 
-    private func emptyBox(message: String) -> some View {
-        Text(message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(Theme.Spacing.lg)
-            .background(
-                Color(nsColor: .controlBackgroundColor),
-                in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-            )
+    /// 「進行中…」の inline 表示。spacing と背景を統一。
+    private func inlineProgress(_ message: String) -> some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            ProgressView().controlSize(.small)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .subtleSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
+    }
+
+    /// 空状態の中間ボックス。
+    private func emptyBox(title: String, message: String, systemImage: String) -> some View {
+        VStack(alignment: .center, spacing: Theme.Spacing.xs) {
+            Image(systemName: systemImage)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(Theme.Spacing.lg)
+        .subtleSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(message)")
     }
 }
 
 // MARK: - TranscriptBubble
 
+/// チャット風の発話バブル。
+///
+/// HIG: 自分 (mic) は trailing / 相手 (system) は leading に寄せる。
+/// 色は `Theme.Palette.micBubble` (accentColor) と `systemBubble` (controlBackground) で
+/// アクセシビリティ的にも 1 種の色だけに依存しないよう、アイコン + ラベルテキストでも区別。
 private struct TranscriptBubble: View {
     let segment: TranscriptSegment
 
@@ -588,6 +684,8 @@ private struct TranscriptBubble: View {
                 Spacer(minLength: 40)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(speakerLabel) \(AppFormatters.timestamp(from: segment.startSec)): \(segment.text)")
     }
 
     private func bubble(alignment: HorizontalAlignment) -> some View {
@@ -595,13 +693,14 @@ private struct TranscriptBubble: View {
             HStack(spacing: Theme.Spacing.xs) {
                 Image(systemName: segment.source == .mic ? "person.fill" : "speaker.wave.2.fill")
                     .font(.caption2)
+                    .accessibilityHidden(true)
                 Text(speakerLabel)
                     .font(.caption2)
                 Text(AppFormatters.timestamp(from: segment.startSec))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            .foregroundStyle(segment.source == .mic ? .secondary : .secondary)
+            .foregroundStyle(.secondary)
 
             Text(segment.text)
                 .font(.body)
@@ -610,9 +709,10 @@ private struct TranscriptBubble: View {
                 .padding(.vertical, Theme.Spacing.sm)
                 .background(
                     segment.source == .mic ? Theme.Palette.micBubble : Theme.Palette.systemBubble,
-                    in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                    in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
                 )
                 .frame(maxWidth: Theme.Layout.bubbleMaxWidth, alignment: alignment == .trailing ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !segment.isFinal {
                 Text("（暫定）")
@@ -637,20 +737,25 @@ private struct ActionItemRow: View {
         HStack(alignment: .top, spacing: Theme.Spacing.sm) {
             Image(systemName: "checkmark.circle")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: Theme.Spacing.sm) {
                     if let assignee = item.assignee {
                         Label(assignee, systemImage: "person")
                     }
                     if let due = item.dueDate {
                         Label(due.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                            .monospacedDigit()
                     }
                 }
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -708,6 +813,22 @@ private struct MinutesExportDocument: FileDocument {
             await vm.select(SampleData.recording)
         }
         .frame(width: 600, height: 700)
+}
+
+#Preview("With data (Dark)") {
+    let vm = AppViewModel(
+        capture: FakeAudioCaptureService(),
+        repository: previewRepository(),
+        transcription: FakeTranscriptionService(),
+        summary: FakeSummaryService()
+    )
+    return RecordingDetailView(viewModel: vm)
+        .task {
+            await vm.refreshList()
+            await vm.select(SampleData.recording)
+        }
+        .frame(width: 600, height: 700)
+        .preferredColorScheme(.dark)
 }
 
 @MainActor

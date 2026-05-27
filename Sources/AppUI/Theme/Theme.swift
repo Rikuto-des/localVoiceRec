@@ -1,31 +1,76 @@
 import SwiftUI
 
 /// アプリ全体で使うレイアウト・色のトークン。
+///
+/// HIG 準拠の方針:
+/// - 色はシステムセマンティックカラー（`Color(nsColor:)`）に集約し、Dark/Light に追随
+/// - サイズはすべて 8 ポイントグリッド
+/// - 角丸は `controlCornerRadius` 系の値に合わせる
+/// - Hardcoded `Color.red` / `Color.orange` などはここでのみ間接化（直接使用は禁止）
 enum Theme {
+    // MARK: - Spacing (8pt grid)
     enum Spacing {
+        /// 4pt — 同種アイコン + ラベルの内側余白などに限定
         static let xs: CGFloat = 4
+        /// 8pt — 標準の最小余白
         static let sm: CGFloat = 8
+        /// 12pt — フォーム内のセクション要素間
         static let md: CGFloat = 12
+        /// 16pt — セクション内のブロック間
         static let lg: CGFloat = 16
+        /// 24pt — セクション間 (大)
         static let xl: CGFloat = 24
     }
 
+    // MARK: - Layout
     enum Layout {
         static let menuBarWidth: CGFloat = 340
         static let listWindowMinWidth: CGFloat = 720
         static let listWindowMinHeight: CGFloat = 480
         static let listPaneMinWidth: CGFloat = 260
         static let detailPaneMinWidth: CGFloat = 420
+        /// 標準カードの角丸 (HIG: medium controls)
         static let cornerRadius: CGFloat = 10
+        /// 小さな pill / inline badge 用
+        static let pillCornerRadius: CGFloat = 6
         static let bubbleMaxWidth: CGFloat = 320
     }
 
+    // MARK: - Semantic colors
+    /// セマンティックカラーパレット。
+    ///
+    /// 必ず `NSColor` のシステム色か `.accentColor` / `.primary` / `.secondary` を経由する。
+    /// 直接 `Color.red` などを使うのは UI レイヤでは禁止 (ここに追加して再利用すること)。
     enum Palette {
-        static let micBubble = Color.accentColor.opacity(0.85)
+        // ─── Recording state ───
+        /// 録音中の赤。`systemRed` はライト/ダークでコントラスト調整済み。
+        static let recording = Color(nsColor: .systemRed)
+        /// 一時停止 / 警告の橙。
+        static let warning = Color(nsColor: .systemOrange)
+        /// 成功 / 完了の緑。
+        static let success = Color(nsColor: .systemGreen)
+        /// エラーの赤 (recording と同色だがセマンティクスで分離)。
+        static let error = Color(nsColor: .systemRed)
+
+        // ─── Chat bubble ───
+        /// 自分 (mic) のチャットバブル背景。アクセントカラーを尊重しつつ視認性を確保。
+        static let micBubble = Color.accentColor
+        /// 自分のチャットバブル前景。アクセント上で読める白系。
+        ///
+        /// HIG: アクセントの上に白を載せると Dark/Light どちらでも視認性が出やすい。
         static let micText = Color.white
+        /// 相手 (system) のチャットバブル背景。
         static let systemBubble = Color(nsColor: .controlBackgroundColor)
+        /// 相手のチャットバブル前景。
         static let systemText = Color.primary
-        static let recordingRed = Color.red
+
+        // ─── Background fills ───
+        /// 一段奥のコントロール背景 (`Form` の row 風)
+        static let surfaceSecondary = Color(nsColor: .controlBackgroundColor)
+        /// 入力欄背景
+        static let textField = Color(nsColor: .textBackgroundColor)
+        /// 罫線 (薄い区切り)。HIG: separator は明示色ではなく `Divider` を優先。
+        static let separator = Color(nsColor: .separatorColor)
     }
 }
 
@@ -59,5 +104,30 @@ enum AppFormatters {
         } else {
             return "\(secs)秒"
         }
+    }
+}
+
+// MARK: - Convenience view modifiers
+
+extension View {
+    /// HIG 準拠の "card" 背景を当てる（`.regularMaterial` ベース、フォールバックは controlBackground）。
+    /// セクションを軽く浮かせる用途に使う。
+    func cardSurface(cornerRadius: CGFloat = Theme.Layout.cornerRadius) -> some View {
+        self.background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Theme.Palette.separator.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    /// より控えめな塗り (フォーム行など)。Material を使わず `controlBackgroundColor` を使う。
+    func subtleSurface(cornerRadius: CGFloat = Theme.Layout.cornerRadius) -> some View {
+        self.background(
+            Theme.Palette.surfaceSecondary,
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
     }
 }

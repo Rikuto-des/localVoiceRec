@@ -10,6 +10,11 @@ import Contracts
 /// - インストール済み Speech locale
 /// - Foundation Models 要約サービスの availability
 /// - 選択中の録音のファイル URL / 静的波形（任意）
+///
+/// ## HIG 準拠ポイント
+/// - セクション名は `caption.bold()` + `.secondary` (Form の section title 風)
+/// - 警告は色 + アイコンの 2 要素で表現
+/// - 設定アプリへの遷移ボタンは `.bordered` + `.controlSize(.small)`
 struct DiagnosticsPanel: View {
     @Bindable var viewModel: AppViewModel
     @State private var isExpanded: Bool = false
@@ -22,25 +27,24 @@ struct DiagnosticsPanel: View {
         } label: {
             HStack {
                 Label("診断情報", systemImage: "stethoscope")
-                    .font(.subheadline.bold())
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if isRefreshing {
-                    ProgressView().controlSize(.mini)
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel("診断情報を更新中")
                 }
             }
         }
         .padding(Theme.Spacing.md)
-        .background(
-            Color(nsColor: .controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-        )
+        .subtleSurface()
         .task {
             await refresh()
         }
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             section(title: "権限") {
                 row(
                     label: "マイク",
@@ -53,8 +57,8 @@ struct DiagnosticsPanel: View {
                     isWarning: viewModel.diagnostics.systemAudioAuthorization != .authorized
                 )
                 if viewModel.diagnostics.systemAudioAuthorization == .notDetermined {
-                    Text("システム音声は事前確認 API がないため、初回録音で実音が取れた時点で「許可済み」になります。")
-                        .font(.caption2)
+                    Text("システム音声は事前確認 API が無いため、初回録音で実音が取れた時点で「許可済み」になります。")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -70,6 +74,9 @@ struct DiagnosticsPanel: View {
                     deniedHelpBox
                 }
             }
+
+            Divider()
+
             section(title: "文字起こし") {
                 if viewModel.diagnostics.installedLocales.isEmpty {
                     row(label: "Locale", value: "未インストール", isWarning: true)
@@ -81,6 +88,9 @@ struct DiagnosticsPanel: View {
                     )
                 }
             }
+
+            Divider()
+
             section(title: "要約") {
                 row(
                     label: "ステータス",
@@ -90,6 +100,7 @@ struct DiagnosticsPanel: View {
             }
 
             if let recording = viewModel.selectedRecording {
+                Divider()
                 section(title: "選択中の録音ファイル") {
                     filePathRow(label: "mic", url: recording.micAudioURL)
                     filePathRow(label: "system", url: recording.systemAudioURL)
@@ -103,7 +114,10 @@ struct DiagnosticsPanel: View {
                 } label: {
                     Label("更新", systemImage: "arrow.clockwise")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 .disabled(isRefreshing)
+                .help("診断情報を取得し直します")
             }
             .padding(.top, Theme.Spacing.xs)
         }
@@ -117,44 +131,58 @@ struct DiagnosticsPanel: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(title).font(.caption.bold()).foregroundStyle(.secondary)
+            Text(title)
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
     }
 
     private func row(label: String, value: String, isWarning: Bool) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             Spacer()
             HStack(spacing: Theme.Spacing.xs) {
                 if isWarning {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .font(.caption2)
+                        .foregroundStyle(Theme.Palette.warning)
+                        .font(.caption)
+                        .accessibilityHidden(true)
                 }
                 Text(value)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(isWarning ? .orange : .primary)
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(isWarning ? Theme.Palette.warning : .primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.trailing)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)\(isWarning ? "（要確認）" : "")")
     }
 
     private func filePathRow(label: String, url: URL) -> some View {
         let path = url.path
         return HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             Spacer()
             Text(path)
-                .font(.caption2.monospaced())
+                .font(.caption.monospaced())
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(.primary)
+                .textSelection(.enabled)
             Button {
                 copyToClipboard(path)
             } label: {
                 Image(systemName: "doc.on.doc")
+                    .accessibilityLabel("\(label) ファイルパスをコピー")
             }
             .buttonStyle(.borderless)
             .help("ファイルパスをコピー")
@@ -162,6 +190,7 @@ struct DiagnosticsPanel: View {
                 FinderReveal.reveal(url)
             } label: {
                 Image(systemName: "magnifyingglass")
+                    .accessibilityLabel("\(label) ファイルを Finder で表示")
             }
             .buttonStyle(.borderless)
             .help("Finder で表示")
@@ -172,9 +201,9 @@ struct DiagnosticsPanel: View {
 
     @ViewBuilder
     private var permissionHelpBox: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("OS にまだ権限を問い合わせていません。下のボタンを押すと、マイクとシステム音声録音の権限ダイアログが表示されます。")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
@@ -182,9 +211,11 @@ struct DiagnosticsPanel: View {
                 Button {
                     Task { await viewModel.requestAudioPermissions() }
                 } label: {
-                    Label("権限を要求する", systemImage: "checkmark.shield")
+                    Label("権限を要求", systemImage: "checkmark.shield")
                 }
+                .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .help("マイクとシステム音声の権限を OS に問い合わせます")
             }
         }
         .padding(.top, Theme.Spacing.xs)
@@ -192,11 +223,16 @@ struct DiagnosticsPanel: View {
 
     @ViewBuilder
     private var deniedHelpBox: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text("一度「拒否」した権限は、システム設定からのみ許可に変更できます。")
-                .font(.caption2)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Label {
+                Text("一度「拒否」した権限は、システム設定からのみ許可に変更できます。")
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundStyle(Theme.Palette.warning)
+            }
+            .font(.caption)
+            .foregroundStyle(.primary)
             HStack {
                 Spacer()
                 Button {
@@ -204,7 +240,9 @@ struct DiagnosticsPanel: View {
                 } label: {
                     Label("システム設定を開く", systemImage: "gearshape")
                 }
+                .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help("プライバシーとセキュリティ設定を開きます")
             }
         }
         .padding(.top, Theme.Spacing.xs)
@@ -273,4 +311,18 @@ struct DiagnosticsPanel: View {
     )
     .padding()
     .frame(width: 360)
+}
+
+#Preview("Diagnostics (Dark)") {
+    DiagnosticsPanel(
+        viewModel: AppViewModel(
+            capture: FakeAudioCaptureService(),
+            repository: InMemoryRecordingRepository(seed: [SampleData.recording]),
+            transcription: FakeTranscriptionService(),
+            summary: FakeSummaryService()
+        )
+    )
+    .padding()
+    .frame(width: 360)
+    .preferredColorScheme(.dark)
 }

@@ -5,6 +5,13 @@ import Contracts
 let RecordingListWindowID = "recording-list"
 
 /// 録音一覧 + 詳細を表示する NavigationSplitView。
+///
+/// ## HIG 準拠ポイント
+/// - `NavigationSplitView` + `.navigationSplitViewStyle(.balanced)`
+/// - サイドバーは `.sidebar` リストスタイルで一貫したサイドバー UI
+/// - 空状態は `ContentUnavailableView`
+/// - ツールバーは `.primaryAction` プレースメントで右寄せ
+/// - すべてのアイコンボタンに `.help()`
 struct RecordingListView: View {
     @Bindable var viewModel: AppViewModel
     @State private var searchText: String = ""
@@ -18,6 +25,7 @@ struct RecordingListView: View {
             detailPane
                 .navigationSplitViewColumnWidth(min: Theme.Layout.detailPaneMinWidth, ideal: 560)
         }
+        .navigationSplitViewStyle(.balanced)
         .navigationTitle("録音一覧")
         .frame(
             minWidth: Theme.Layout.listWindowMinWidth,
@@ -48,7 +56,7 @@ struct RecordingListView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(spacing: 0) {
+        Group {
             if viewModel.recordings.isEmpty {
                 emptyState
             } else {
@@ -94,6 +102,7 @@ struct RecordingListView: View {
                 } label: {
                     Label("更新", systemImage: "arrow.clockwise")
                 }
+                .help("録音一覧を最新の状態に更新します")
             }
         }
     }
@@ -108,20 +117,13 @@ struct RecordingListView: View {
         }
     }
 
+    /// 空状態 — macOS 14+ の `ContentUnavailableView` を使う (HIG 推奨)。
     private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "mic.slash")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text("録音がまだありません")
-                .font(.headline)
-            Text("メニューバーから録音を開始してください")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+        ContentUnavailableView(
+            "録音がまだありません",
+            systemImage: "mic.slash",
+            description: Text("メニューバーから録音を開始してください。")
+        )
     }
 
     // MARK: - Detail
@@ -141,32 +143,43 @@ struct RecordingListView: View {
 }
 
 /// 一覧の 1 行。
+///
+/// HIG: サイドバー行は `.body` フォント + secondary メタ情報、複数行構造を避けすぎず簡潔に。
 private struct RecordingRow: View {
     let recording: Recording
     let status: RecordingStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack {
+            HStack(spacing: Theme.Spacing.sm) {
                 Text(recording.title)
                     .font(.body)
                     .lineLimit(1)
-                Spacer(minLength: 8)
+                    .truncationMode(.tail)
+                Spacer(minLength: Theme.Spacing.sm)
                 StatusBadge(status: status)
             }
             HStack(spacing: Theme.Spacing.sm) {
                 Text(AppFormatters.dateTime.string(from: recording.startedAt))
                 Text("·")
+                    .foregroundStyle(.tertiary)
                 Text(AppFormatters.duration(recording.duration))
+                    .monospacedDigit()
             }
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(recording.title), \(AppFormatters.dateTime.string(from: recording.startedAt)), \(AppFormatters.duration(recording.duration)), \(status.accessibilityDescription)"
+        )
     }
 }
 
 /// 各録音の処理状態を表すコンパクトなバッジ。
+///
+/// HIG: 状態は **色だけでなくアイコン形状でも区別** できるよう SF Symbol を選んでいる。
 private struct StatusBadge: View {
     let status: RecordingStatus
 
@@ -176,34 +189,59 @@ private struct StatusBadge: View {
             Image(systemName: "circle.dashed")
                 .foregroundStyle(.secondary)
                 .help("文字起こし未実行")
+                .accessibilityLabel("文字起こし未実行")
         case .transcribing:
             HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
-                Text("文字起こし中").font(.caption2).foregroundStyle(.secondary)
+                ProgressView().controlSize(.small)
+                Text("文字起こし中")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             .help("文字起こしを実行中")
+            .accessibilityLabel("文字起こしを実行中")
         case .summarizing:
             HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
-                Text("要約中").font(.caption2).foregroundStyle(.secondary)
+                ProgressView().controlSize(.small)
+                Text("要約中")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             .help("要約を生成中")
+            .accessibilityLabel("要約を生成中")
         case .transcribed:
             Image(systemName: "text.bubble.fill")
                 .foregroundStyle(.secondary)
                 .help("文字起こし済み（要約なし）")
+                .accessibilityLabel("文字起こし済み")
         case .completed:
             Image(systemName: "checkmark.seal.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.Palette.success)
                 .help("文字起こし + 要約完了")
+                .accessibilityLabel("完了")
         case .emptyTranscript:
             Image(systemName: "speaker.slash")
                 .foregroundStyle(.secondary)
                 .help("音声内容が検出されませんでした")
+                .accessibilityLabel("音声未検出")
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.Palette.error)
                 .help("処理に失敗しました")
+                .accessibilityLabel("失敗")
+        }
+    }
+}
+
+private extension RecordingStatus {
+    var accessibilityDescription: String {
+        switch self {
+        case .pending: return "文字起こし未実行"
+        case .transcribing: return "文字起こし中"
+        case .summarizing: return "要約中"
+        case .transcribed: return "文字起こし済み"
+        case .completed: return "文字起こしと要約が完了"
+        case .emptyTranscript: return "音声未検出"
+        case .failed: return "処理失敗"
         }
     }
 }
@@ -222,6 +260,23 @@ private struct StatusBadge: View {
             )
         ])
     )
+}
+
+#Preview("With recordings (Dark)") {
+    RecordingListView(
+        viewModel: makePreviewViewModel(seed: [
+            SampleData.recording,
+            Recording(
+                id: UUID(),
+                title: "Weekly Sync",
+                startedAt: Date().addingTimeInterval(-86400),
+                endedAt: Date().addingTimeInterval(-86400 + 1200),
+                micAudioURL: URL(fileURLWithPath: "/tmp/m.wav"),
+                systemAudioURL: URL(fileURLWithPath: "/tmp/s.wav")
+            )
+        ])
+    )
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Empty") {
