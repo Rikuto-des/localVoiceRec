@@ -7,6 +7,13 @@ DerivedData/
 
 # XcodeGen-generated project (regenerate locally via `xcodegen generate`)
 localVoiceRec.xcodeproj/
+
+# iCloud Drive duplication (Finder copies "localVoiceRec 2.xcodeproj" etc.)
+localVoiceRec [0-9].xcodeproj/
+localVoiceRec [0-9]*.xcodeproj/
+localVoiceRec [0-9].swift
+App/* [0-9].swift
+App/* [0-9].entitlements
 *.pbxuser
 !default.pbxuser
 *.mode1v3
