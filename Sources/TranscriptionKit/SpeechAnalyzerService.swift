@@ -268,7 +268,10 @@ public actor SpeechAnalyzerService: TranscriptionService {
     }
 
     /// `AVAudioFile` を順次読み出して `targetFormat` に変換、`AnalyzerInput` として yield する。
-    private static func feedAudioFile(
+    ///
+    /// 注: 本来 private 相当だが、P4.3 converter cache + reset の回帰テスト
+    /// (`SpeechAnalyzerConverterCacheTests`) から呼び出すため `internal` で公開している。
+    static func feedAudioFile(
         audioFile: AVAudioFile,
         targetFormat: AVAudioFormat?,
         inputBuilder: AsyncStream<AnalyzerInput>.Continuation
@@ -286,13 +289,48 @@ public actor SpeechAnalyzerService: TranscriptionService {
             throw TranscriptionError.analyzerFailed(message: "Failed to allocate input PCM buffer")
         }
 
-        // ★ 重要 ★
-        // AVAudioConverter は **同じインスタンスを再利用しない**。convert(to:error:withInputFrom:)
-        // で `.endOfStream` を 1 回送ると converter は「ストリーム終了」状態になり、以降の
-        // convert 呼び出しが正しく動作しなくなる（出力が無音や歪みになる）。
+        // P4.3: AVAudioConverter / outBuffer / ConverterFeedState は **ループ外で 1 度だけ
+        // 確保**し、各イテレーションで再利用する。
         //
-        // 修正: 1) **イテレーションごとに新規 converter を生成**して状態リーク防止
-        //       2) なるべくシンプルな convert(to:from:) を使う（sample-rate conversion も OK）
+        // 旧コードはイテレーションごとに converter / outBuffer / state を新規 alloc していた。
+        // コメントには「endOfStream 後の状態リークを避けるため」とあったが、Apple の
+        // AVAudioConverter は `reset()` を呼ぶことで内部状態（sample-rate conversion buffer,
+        // DSP state）を破棄でき、新しい stream として再利用できる。これはまさにこのケースの
+        // ための API。毎チャンク alloc は不要なコストで、バッテリー最小化方針と矛盾していた。
+        //
+        // 注意: 各 chunk 投入時に input block が `.endOfStream` を返すモデルは維持する
+        //       （converter は chunk 単位で「flush」されて tail samples を吐き出す）。
+        //       次の chunk の前に `converter.reset()` を呼ぶことで、内部の filter state を
+        //       初期化し、過去 chunk の影響が漏れない新しい stream として扱う。
+
+        let needsConversion = inputFormat != outputFormat
+        let converter: AVAudioConverter?
+        let outBuffer: AVAudioPCMBuffer?
+        let feedState: ConverterFeedState?
+        if needsConversion {
+            guard let conv = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+                throw TranscriptionError.analyzerFailed(
+                    message: "AVAudioConverter init failed (\(inputFormat) -> \(outputFormat))"
+                )
+            }
+            // 出力 capacity は **最大入力フレーム数** に基づいて確保。実際の出力は frameLength
+            // で示されるので、capacity 過剰でも問題ない。
+            let ratio = outputFormat.sampleRate / inputFormat.sampleRate
+            let outCapacity = AVAudioFrameCount(Double(readFrameCapacity) * ratio + 1024)
+            guard let outBuf = AVAudioPCMBuffer(
+                pcmFormat: outputFormat,
+                frameCapacity: outCapacity
+            ) else {
+                throw TranscriptionError.analyzerFailed(message: "Failed to allocate output PCM buffer")
+            }
+            converter = conv
+            outBuffer = outBuf
+            feedState = ConverterFeedState(buffer: inputBuffer)
+        } else {
+            converter = nil
+            outBuffer = nil
+            feedState = nil
+        }
 
         while true {
             try Task.checkCancellation()
@@ -316,31 +354,17 @@ public actor SpeechAnalyzerService: TranscriptionService {
             }
 
             let buffer: AVAudioPCMBuffer
-            if inputFormat != outputFormat {
-                // 出力 capacity は入力フレーム × (出レート/入レート) + マージン
-                let ratio = outputFormat.sampleRate / inputFormat.sampleRate
-                let outCapacity = AVAudioFrameCount(Double(inputBuffer.frameLength) * ratio + 1024)
-                guard let outBuffer = AVAudioPCMBuffer(
-                    pcmFormat: outputFormat,
-                    frameCapacity: outCapacity
-                ) else {
-                    throw TranscriptionError.analyzerFailed(message: "Failed to allocate output PCM buffer")
-                }
-                // ★ converter は **イテレーションごとに新規作成** ★
-                // 旧コードはループ外で 1 個作って再利用していたが、input block で
-                // `.endOfStream` を返した後の converter は内部状態が「終了」になり、
-                // 後続イテレーションで歪んだ/無音の出力を返していた（最初の "あ" だけで
-                // 以降の発話が認識されない問題の根本原因）。fresh にすれば
-                // 各 chunk の sample-rate conversion が独立に正しく動く。
-                guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-                    throw TranscriptionError.analyzerFailed(
-                        message: "AVAudioConverter init failed (\(inputFormat) -> \(outputFormat))"
-                    )
-                }
-                let state = ConverterFeedState(buffer: inputBuffer)
+            if needsConversion, let converter, let outBuffer, let feedState {
+                // 新しい chunk を「新しい stream」として扱うため、converter / state を reset。
+                // reset() は internal sample-rate conversion buffer と DSP state を破棄して
+                // 次の stream を受け付け可能にする（Apple AVAudioConverter doc）。
+                converter.reset()
+                feedState.reset()
+                outBuffer.frameLength = 0
+
                 var convError: NSError?
                 let status = converter.convert(to: outBuffer, error: &convError) { _, outStatus in
-                    state.next(outStatus: outStatus)
+                    feedState.next(outStatus: outStatus)
                 }
                 if status == .error, let convError {
                     throw TranscriptionError.analyzerFailed(message: "AVAudioConverter error: \(convError)")
@@ -348,7 +372,12 @@ public actor SpeechAnalyzerService: TranscriptionService {
                 if outBuffer.frameLength == 0 {
                     continue
                 }
-                buffer = outBuffer
+                // outBuffer は再利用するため、Analyzer に渡す前に **コピー** する必要がある。
+                // （analyzer は async で消費するので、次イテレーションで上書きされると壊れる）
+                guard let copied = outBuffer.copy() as? AVAudioPCMBuffer else {
+                    throw TranscriptionError.analyzerFailed(message: "Failed to copy output PCM buffer")
+                }
+                buffer = copied
             } else {
                 buffer = inputBuffer.copy() as? AVAudioPCMBuffer ?? inputBuffer
             }
@@ -360,14 +389,21 @@ public actor SpeechAnalyzerService: TranscriptionService {
 
 /// `AVAudioConverter.convert(to:error:withInputFrom:)` の入力ブロックに渡す状態。
 /// チャンク 1 個ぶんを 1 度だけ供給し、2 回目の呼び出しで `.endOfStream` を返す
-/// 「ワンショット供給」モード。各イテレーションで converter を作り直しているため、
-/// state も常に新規インスタンスで作られる。
+/// 「ワンショット供給」モード。
+///
+/// P4.3: converter を再利用するようにしたため、state も **同じインスタンスを reset() で
+/// 再利用** する。各 chunk 開始前に `reset()` を呼んで `supplied` を初期化する。
 private final class ConverterFeedState: @unchecked Sendable {
     private var supplied = false
     private let buffer: AVAudioPCMBuffer
 
     init(buffer: AVAudioPCMBuffer) {
         self.buffer = buffer
+    }
+
+    /// 次の chunk 用に「未供給」状態に戻す。
+    func reset() {
+        supplied = false
     }
 
     func next(outStatus: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
