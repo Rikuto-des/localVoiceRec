@@ -47,6 +47,15 @@ public protocol AudioCaptureService: Sendable {
     /// - **distinct-until-changed**: 同一値を連続して yield しない
     /// - **buffering**: `.bufferingNewest(1)` を使い、遅い consumer の場合は最新だけ届く
     var stateUpdates: AsyncStream<CaptureState> { get }
+
+    /// 録音中のレベル（RMS / Peak）スナップショットを流すストリーム。
+    /// 波形 / レベルメーター UI 用。録音中以外は yield しない（または静寂を yield する）。
+    ///
+    /// ## セマンティクス
+    /// - 録音中は概ね **10〜30 Hz** (33ms 〜 100ms ごと) で yield することを推奨
+    /// - bufferingPolicy は `.bufferingNewest(2)` を推奨（最新だけ届けば十分）
+    /// - 録音停止時に finish() するか否かは実装依存。consumer は途中切断を許容する。
+    var liveAudioLevels: AsyncStream<AudioLevelSnapshot> { get }
 }
 
 public enum CaptureState: Sendable, Hashable {

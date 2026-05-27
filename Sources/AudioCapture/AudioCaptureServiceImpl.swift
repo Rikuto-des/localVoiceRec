@@ -27,6 +27,13 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     public nonisolated var stateUpdates: AsyncStream<CaptureState> { stateStream }
 
+    // MARK: - Audio level stream
+
+    private let levelContinuation: AsyncStream<AudioLevelSnapshot>.Continuation
+    private nonisolated let levelStream: AsyncStream<AudioLevelSnapshot>
+
+    public nonisolated var liveAudioLevels: AsyncStream<AudioLevelSnapshot> { levelStream }
+
     private var _currentState: CaptureState = .idle
     public var currentState: CaptureState { _currentState }
 
@@ -45,6 +52,12 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         self.stateContinuation = captured
         // 初期値を 1 件積んでおく → 初回購読者が現在状態を取得できる
         captured.yield(.idle)
+
+        var levelCaptured: AsyncStream<AudioLevelSnapshot>.Continuation!
+        self.levelStream = AsyncStream<AudioLevelSnapshot>(
+            bufferingPolicy: .bufferingNewest(2)
+        ) { levelCaptured = $0 }
+        self.levelContinuation = levelCaptured
     }
 
     // MARK: - State transition
@@ -110,16 +123,17 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         let resolvedTitle = title ?? Self.defaultTitle(at: now)
 
         // ── 出力ディレクトリ準備
-        let sessionDir = outputDirectory.appendingPathComponent(sessionID.uuidString, isDirectory: true)
+        // outputDirectory は呼び出し側（ViewModel）が `AppPaths.recordingDirectory(for: id)`
+        // で生成済みの一意ディレクトリ。ここで更に UUID 層を作らない（二重ネスト防止）。
         do {
-            try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         } catch {
-            let err = AudioCaptureError.outputDirectoryUnavailable(sessionDir)
+            let err = AudioCaptureError.outputDirectoryUnavailable(outputDirectory)
             transition(to: .failed(error: err))
             throw err
         }
-        let micURL = sessionDir.appendingPathComponent("mic.wav")
-        let systemURL = sessionDir.appendingPathComponent("system.wav")
+        let micURL = outputDirectory.appendingPathComponent("mic.wav")
+        let systemURL = outputDirectory.appendingPathComponent("system.wav")
 
         // ── MicCapture 起動
         let mic = MicCapture(bufferSize: 4096)
