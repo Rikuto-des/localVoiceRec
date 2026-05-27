@@ -4,6 +4,9 @@ import AVFoundation
 import Contracts
 import AudioTapKit
 import os.log
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// 本番 `AudioCaptureService` 実装。
 ///
@@ -52,6 +55,16 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
     /// 現在録音中のリソース束。`nil` なら idle。
     private var active: ActiveSession?
 
+    // MARK: - System notification observers (sleep / wake)
+
+    /// `NSWorkspace.willSleepNotification` 監視トークン。actor 初期化時に install し、
+    /// deinit で remove する。録音中以外は no-op で受け流す。
+    /// notification handler は任意スレッドで呼ばれるため、`Task { await self.handleInterruption(...) }`
+    /// で actor に hop してから状態更新する。
+    private nonisolated(unsafe) var willSleepObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var didWakeObserver: NSObjectProtocol?
+    private let observersLock = NSLock()
+
     // MARK: - Init
 
     public init() {
@@ -68,6 +81,75 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             bufferingPolicy: .bufferingNewest(2)
         ) { levelCaptured = $0 }
         self.levelContinuation = levelCaptured
+
+        // ── スリープ / 復帰の購読 ──
+        // NSWorkspace.shared.notificationCenter は OS スリープ前後のイベントを配信する。
+        // 録音中にスリープに入ると IOProc / AVAudioEngine が暗黙停止し、
+        // 復帰しても自動再開されないことがある (ハードウェア構成にも依存)。
+        // ここで観測し、`interrupted(.systemWillSleep)` に遷移させてユーザーに通知する。
+        #if canImport(AppKit)
+        let nc = NSWorkspace.shared.notificationCenter
+        let willSleep = nc.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.handleInterruption(reason: .systemWillSleep) }
+        }
+        let didWake = nc.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // 復帰時は自動再開しない方針。UI が `.interrupted` を見て
+            // ユーザーに明示的な操作 (停止 or 新規開始) を促す。
+            Self.logger.info("NSWorkspace.didWakeNotification: 録音は再開しません — ユーザー操作待ち")
+        }
+        observersLock.lock()
+        willSleepObserver = willSleep
+        didWakeObserver = didWake
+        observersLock.unlock()
+        #endif
+    }
+
+    deinit {
+        #if canImport(AppKit)
+        observersLock.lock()
+        let w = willSleepObserver
+        let d = didWakeObserver
+        willSleepObserver = nil
+        didWakeObserver = nil
+        observersLock.unlock()
+        let nc = NSWorkspace.shared.notificationCenter
+        if let w { nc.removeObserver(w) }
+        if let d { nc.removeObserver(d) }
+        #endif
+    }
+
+    // MARK: - Interruption handling
+
+    /// 録音中に外部要因 (スリープ / HW 切替 / IOProc 停止) で中断された場合に呼ぶ。
+    /// 状態を `.interrupted(reason:)` に遷移させ、書き込みを止める (ハードウェアは
+    /// 既に止まっている可能性があるが、念のため明示停止する)。
+    /// 上位 (UI) は `stateUpdates` を経由してこの遷移を観測し、ユーザーに通知する。
+    func handleInterruption(reason: InterruptionReason) {
+        guard let active else { return }
+        let startedAt: Date
+        switch _currentState {
+        case .recording(let t): startedAt = t
+        case .paused(let t, _): startedAt = t
+        case .interrupted:
+            // 既に interrupted — 冪等
+            return
+        default:
+            return
+        }
+        Self.logger.info("AudioCaptureServiceImpl.handleInterruption: reason=\(String(describing: reason))")
+        // 書き込みは止める (ハードウェアは reason 別で振る舞いが違うため触らない)
+        active.micSink.setPaused(true)
+        active.systemSink.setPaused(true)
+        transition(to: .interrupted(reason: reason, startedAt: startedAt, interruptedAt: Date()))
     }
 
     // MARK: - State transition
@@ -159,6 +241,12 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
         // ── MicCapture 起動
         let mic = MicCapture(bufferSize: 4096)
+        // HW 切替 (AirPods 接続/切断, USB マイク抜き差し) で AVAudioEngine が暗黙停止する。
+        // その瞬間に notification handler が呼ばれるため、actor に hop して状態更新する。
+        mic.onConfigurationChange = { [weak self] in
+            guard let self else { return }
+            Task { await self.handleInterruption(reason: .engineConfigurationChanged) }
+        }
         let micStream: AsyncStream<AVAudioPCMBuffer>
         do {
             micStream = try mic.start()
@@ -252,6 +340,40 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             Self.logger.debug("level emit task ended")
         }
 
+        // ── Watchdog task: IOProc が一定時間止まったら .interrupted(.audioFlowStalled)
+        // 簡易実装: 2 秒ごとに tap.flowSnapshot() を読み、前回と同値が 2 回連続したら fire。
+        // (= 約 4 秒以上 IOProc が進んでいない)
+        let tapRef = tap
+        let watchdogTask = Task.detached(priority: .utility) { [weak self] in
+            var lastCallCount = tapRef.flowSnapshot().callCount
+            var lastBytes = tapRef.flowSnapshot().bytesReceived
+            var stallStreak = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+                if Task.isCancelled { break }
+                let snap = tapRef.flowSnapshot()
+                // 録音中以外 (paused, interrupted など) は判定をスキップしてリセット。
+                let state = await self?.currentState
+                if case .recording = state {
+                    if snap.callCount == lastCallCount && snap.bytesReceived == lastBytes {
+                        stallStreak += 1
+                    } else {
+                        stallStreak = 0
+                    }
+                    if stallStreak >= 2 {
+                        // 約 4 秒以上カウンタが進まない → HW 切替 / 切断を疑う。
+                        Self.logger.error("Watchdog: IOProc stalled (callCount=\(snap.callCount), bytes=\(snap.bytesReceived))")
+                        await self?.handleInterruption(reason: .audioFlowStalled)
+                        stallStreak = 0
+                    }
+                } else {
+                    stallStreak = 0
+                }
+                lastCallCount = snap.callCount
+                lastBytes = snap.bytesReceived
+            }
+        }
+
         // ── ActiveSession を構築
         let session = CaptureSession(
             id: sessionID,
@@ -268,7 +390,8 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             systemSink: systemSink,
             micTask: micTask,
             systemTask: systemTask,
-            levelEmitTask: levelEmitTask
+            levelEmitTask: levelEmitTask,
+            watchdogTask: watchdogTask
         )
         Self.logger.info("AudioCaptureServiceImpl.start: micFormat=\(String(describing: mic.captureFormat)) sysFormat=\(String(describing: tap.captureFormat))")
         transition(to: .recording(startedAt: now))
@@ -314,13 +437,15 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         switch _currentState {
         case .recording(let t): startedAt = t
         case .paused(let t, _): startedAt = t
+        case .interrupted(_, let t, _): startedAt = t
         default:
             throw AudioCaptureError.notRecording
         }
         transition(to: .finalizing)
 
-        // level emit task は先に止める (空 snapshot の余分な yield を防ぐ)
+        // level emit / watchdog は先に止める (空 snapshot の余分な yield を防ぐ)
         active.levelEmitTask.cancel()
+        active.watchdogTask.cancel()
 
         // ハードウェア停止 → ストリームの finish が伝搬 → consumer Task が自然終了する。
         active.mic.stop()
@@ -330,6 +455,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         _ = await active.micTask.value
         _ = await active.systemTask.value
         _ = await active.levelEmitTask.value
+        _ = await active.watchdogTask.value
 
         // writer を明示 close (AVAudioFile は ARC で flush するが、シーケンスポイントとして残す)
         active.micSink.close()
@@ -456,6 +582,7 @@ private struct ActiveSession {
     let micTask: Task<Void, Never>
     let systemTask: Task<Void, Never>
     let levelEmitTask: Task<Void, Never>
+    let watchdogTask: Task<Void, Never>
 }
 
 // MARK: - WriterSink

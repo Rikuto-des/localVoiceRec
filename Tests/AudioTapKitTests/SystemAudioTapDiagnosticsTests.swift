@@ -39,4 +39,43 @@ struct SystemAudioTapDiagnosticsTests {
         let s = AudioTapError.fourCC(0x61756473)
         #expect(s == "'auds'")
     }
+
+    @Test("flowSnapshot() は (callCount, bytesReceived) を返す — 初期は (0,0)")
+    func flowSnapshotInitial() throws {
+        let tap = try SystemAudioTap()
+        let snap = tap.flowSnapshot()
+        #expect(snap.callCount == 0)
+        #expect(snap.bytesReceived == 0)
+    }
+}
+
+/// `MicCapture` の宣言的 API のテスト (HW なし)。
+///
+/// 実 engine.start() は CI/サンドボックスで失敗するため、
+/// ここでは onConfigurationChange の install/差し替えが副作用なくできることだけ確認する。
+@Suite("MicCapture API")
+struct MicCaptureAPITests {
+
+    @Test("onConfigurationChange は nil で初期化される")
+    func handlerDefaultsToNil() {
+        let mic = MicCapture(voiceProcessingEnabled: false)
+        #expect(mic.onConfigurationChange == nil)
+    }
+
+    @Test("onConfigurationChange は差し替え可能")
+    func handlerIsSettable() {
+        let mic = MicCapture(voiceProcessingEnabled: false)
+        let called = LockedBool()
+        mic.onConfigurationChange = { called.set(true) }
+        // 手動で発火させて代入の正当性を確認
+        mic.onConfigurationChange?()
+        #expect(called.value == true)
+    }
+}
+
+private final class LockedBool: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _v: Bool = false
+    var value: Bool { lock.lock(); defer { lock.unlock() }; return _v }
+    func set(_ v: Bool) { lock.lock(); _v = v; lock.unlock() }
 }

@@ -29,6 +29,17 @@ public final class MicCapture: @unchecked Sendable {
     private var state: State = .idle
     private let lock = NSLock()
 
+    /// `AVAudioEngineConfigurationChange` の購読トークン。`start()` で確保、`stop()` で解除。
+    /// HW 切替時 (e.g. AirPods 接続/切断) に AVAudioEngine は暗黙停止する。
+    /// その瞬間に通知され、上位 (`AudioCaptureServiceImpl`) に中断を伝えることで
+    /// 「録音中だと思っていたら無音」というサイレントフェイルを防ぐ。
+    private var configChangeObserver: NSObjectProtocol?
+
+    /// 上位から install するハンドラ。`AVAudioEngineConfigurationChange` を受け取った瞬間に
+    /// MainActor とは無関係なスレッドで呼ばれる。実装側で必要なら Task / actor に hop すること。
+    /// `start()` の前に install しておくのが望ましい (start 後でも有効)。
+    public var onConfigurationChange: (@Sendable () -> Void)?
+
     /// AsyncStream のバッファ上限を超えてドロップされたバッファ数を計上する shared box。
     /// audio I/O thread の tap closure と UI スレッドの両方から触るため
     /// NSLock 保護下で増加・読み出しを行う。
@@ -118,6 +129,19 @@ public final class MicCapture: @unchecked Sendable {
             self.continuation = nil
             throw AudioTapError.engineStartFailed(error.localizedDescription)
         }
+
+        // ★ Configuration change を購読 ★
+        // engine.start() 後に install する。通知は audio I/O 系の任意スレッドで来る可能性があるため、
+        // closure 内では capture した値のみ参照し、self へのアクセスは行わない。
+        let handler = self.onConfigurationChange
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { _ in
+            handler?()
+        }
+
         state = .running
         return stream
     }
@@ -126,11 +150,22 @@ public final class MicCapture: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard state == .running else { return }
+        if let token = configChangeObserver {
+            NotificationCenter.default.removeObserver(token)
+            configChangeObserver = nil
+        }
         engine.inputNode.removeTap(onBus: bus)
         engine.stop()
         continuation?.finish()
         continuation = nil
         state = .idle
+    }
+
+    deinit {
+        // start 中に deinit されるケースは想定外だが、観測者リークだけは確実に防ぐ。
+        if let token = configChangeObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     private static func yieldCopy(

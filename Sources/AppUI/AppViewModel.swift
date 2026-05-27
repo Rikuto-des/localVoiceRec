@@ -556,10 +556,10 @@ public final class AppViewModel {
 
     // MARK: - Derived state helpers
 
-    /// 録音中相当か（recording / paused / preparing / finalizing）
+    /// 録音中相当か（recording / paused / preparing / finalizing / interrupted）
     public var isCapturing: Bool {
         switch captureState {
-        case .recording, .paused, .preparing, .finalizing:
+        case .recording, .paused, .preparing, .finalizing, .interrupted:
             return true
         case .idle, .failed:
             return false
@@ -571,7 +571,7 @@ public final class AppViewModel {
         switch captureState {
         case .recording:
             return true
-        case .idle, .preparing, .paused, .finalizing, .failed:
+        case .idle, .preparing, .paused, .finalizing, .failed, .interrupted:
             return false
         }
     }
@@ -581,7 +581,7 @@ public final class AppViewModel {
         switch captureState {
         case .paused:
             return true
-        case .idle, .preparing, .recording, .finalizing, .failed:
+        case .idle, .preparing, .recording, .finalizing, .failed, .interrupted:
             return false
         }
     }

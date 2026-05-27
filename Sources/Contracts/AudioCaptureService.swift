@@ -65,6 +65,20 @@ public enum CaptureState: Sendable, Hashable {
     case paused(startedAt: Date, pausedAt: Date)
     case finalizing
     case failed(error: AudioCaptureError)
+    /// 録音が外部要因 (HW 切替・スリープ・engine config change など) で中断された状態。
+    /// 内部的には `pause` 同様に書き込みは止まり、ハードウェアも停止している可能性がある。
+    /// 上位 (UI) はユーザーに通知し、必要なら明示的に停止/再開操作を促す。
+    case interrupted(reason: InterruptionReason, startedAt: Date, interruptedAt: Date)
+}
+
+/// 録音が中断された理由。`CaptureState.interrupted(reason:)` で運ばれる。
+public enum InterruptionReason: Sendable, Hashable {
+    /// `AVAudioEngineConfigurationChange` 通知。HW 切替 (Bluetooth 接続/切断, USB マイク抜き差し) など。
+    case engineConfigurationChanged
+    /// `NSWorkspace.willSleepNotification`。OS がスリープに入ろうとしている。
+    case systemWillSleep
+    /// IOProc / マイクから一定時間データが届かない (watchdog 検知)。
+    case audioFlowStalled
 }
 
 public struct CaptureSession: Sendable, Hashable {

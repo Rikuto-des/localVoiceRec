@@ -98,6 +98,16 @@ struct AudioCaptureServiceImplTests {
         let state = await svc.currentState
         #expect(state == .idle)
     }
+
+    /// 録音中でない (idle) で `handleInterruption` を呼んでも no-op。
+    /// 実際のスリープ通知ハンドラは録音中だけ反応すべき。
+    @Test("idle で handleInterruption を呼んでも状態が変わらない")
+    func handleInterruptionFromIdleIsNoop() async {
+        let svc = AudioCaptureServiceImpl()
+        await svc.handleInterruption(reason: .systemWillSleep)
+        let state = await svc.currentState
+        #expect(state == .idle)
+    }
 }
 
 // MARK: - SystemAudioCaptureFlag (S15)

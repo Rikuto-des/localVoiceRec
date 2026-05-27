@@ -55,6 +55,14 @@ public final class SystemAudioTap: @unchecked Sendable {
     /// IOProc が ring に push した合計バイト数 (デバッグ観測値)。
     public var receivedBytesTotal: Int { _recvBytesTotal.value.load(ordering: .relaxed) }
 
+    /// 軽量な「IOProc が進んでいるか」スナップショット。watchdog 用。
+    /// (ioProcCallCount, receivedBytesTotal) を 1 回の同期スナップショットで返す。
+    /// 上位は一定間隔で呼び出し、両カウンタが進んでいなければ HW 切替 / 切断による
+    /// IOProc 停止を疑える。
+    public func flowSnapshot() -> (callCount: Int, bytesReceived: Int) {
+        (ioProcCallCount, receivedBytesTotal)
+    }
+
     // MARK: - Internal state
 
     private var tapID: AudioObjectID = AudioObjectID(kAudioObjectUnknown)

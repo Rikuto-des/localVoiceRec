@@ -42,7 +42,7 @@ struct AppViewModelTests {
         switch vm.captureState {
         case .recording:
             #expect(vm.lastError == nil)
-        case .idle, .preparing, .paused, .finalizing, .failed:
+        case .idle, .preparing, .paused, .finalizing, .failed, .interrupted:
             Issue.record("Expected .recording state, got \(vm.captureState)")
         }
     }
@@ -67,7 +67,7 @@ struct AppViewModelTests {
         switch vm.captureState {
         case .paused:
             break
-        case .idle, .preparing, .recording, .finalizing, .failed:
+        case .idle, .preparing, .recording, .finalizing, .failed, .interrupted:
             Issue.record("Expected .paused state, got \(vm.captureState)")
         }
 
@@ -75,7 +75,7 @@ struct AppViewModelTests {
         switch vm.captureState {
         case .recording:
             break
-        case .idle, .preparing, .paused, .finalizing, .failed:
+        case .idle, .preparing, .paused, .finalizing, .failed, .interrupted:
             Issue.record("Expected .recording state after resume, got \(vm.captureState)")
         }
     }

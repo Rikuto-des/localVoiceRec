@@ -91,6 +91,10 @@ private struct MenuBarLabel: View {
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(Color(nsColor: .systemRed))
                     .accessibilityLabel("録音エラー")
+            case .interrupted:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .accessibilityLabel("録音中断")
             case .idle:
                 if isProcessing {
                     Image(systemName: "waveform.badge.magnifyingglass")

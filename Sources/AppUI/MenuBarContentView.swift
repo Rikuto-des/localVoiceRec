@@ -89,6 +89,8 @@ struct MenuBarContentView: View {
             badge(text: "保存中", systemImage: "arrow.down.circle", tint: .secondary)
         case .failed:
             badge(text: "エラー", systemImage: "exclamationmark.circle.fill", tint: Theme.Palette.error)
+        case .interrupted:
+            badge(text: "中断", systemImage: "exclamationmark.triangle.fill", tint: Theme.Palette.warning)
         }
     }
 
@@ -134,6 +136,18 @@ struct MenuBarContentView: View {
             Text("失敗: \(String(describing: error))")
                 .font(.footnote)
                 .foregroundStyle(Theme.Palette.error)
+        case .interrupted(let reason, _, _):
+            Text("録音が中断されました (\(Self.label(for: reason)))。停止してから再度開始してください。")
+                .font(.footnote)
+                .foregroundStyle(Theme.Palette.warning)
+        }
+    }
+
+    private static func label(for reason: InterruptionReason) -> String {
+        switch reason {
+        case .engineConfigurationChanged: return "オーディオ機器の変更"
+        case .systemWillSleep: return "スリープ"
+        case .audioFlowStalled: return "信号停止"
         }
     }
 
