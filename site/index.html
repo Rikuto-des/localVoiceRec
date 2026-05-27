@@ -24,7 +24,7 @@
   <div class="wrap">
     <span class="topstripe-left">localVoiceRec</span>
     <span class="topstripe-mid">macOS · オンデバイス · 社内向け</span>
-    <span class="topstripe-right">v0.1.2 · 2026 · Issue 03</span>
+    <span class="topstripe-right">v0.1.3 · 2026 · Issue 04</span>
   </div>
 </header>
 
@@ -48,7 +48,7 @@
         <div class="hero-cta">
           <a class="btn btn-primary" href="#download">
             <span class="btn-label">ダウンロード</span>
-            <span class="btn-meta">.dmg · 908 KB</span>
+            <span class="btn-meta">.dmg · 1.0 MB</span>
           </a>
           <p class="hero-fineprint">
             macOS 26 (Tahoe) ／ Apple Silicon ／ Apple Intelligence 有効
@@ -339,25 +339,35 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 
     <div class="download-card">
       <div class="download-left">
-        <p class="download-version">version <strong>0.1.2</strong></p>
-        <p class="download-build">released 2026-05-27 · build 3</p>
-        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.2.dmg" download>
-          <span class="btn-label">localVoiceRec-0.1.2.dmg</span>
-          <span class="btn-meta">.dmg · 908 KB</span>
+        <p class="download-version">version <strong>0.1.3</strong></p>
+        <p class="download-build">released 2026-05-27 · build 4</p>
+        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.3.dmg" download>
+          <span class="btn-label">localVoiceRec-0.1.3.dmg</span>
+          <span class="btn-meta">.dmg · 1.0 MB</span>
         </a>
         <p class="download-note">
           ※ 配布版は Developer ID 署名 + Notarization 済み。<br />
           ダウンロード後、SHA-256 を必ず照合してください。
         </p>
+        <p class="download-note" style="margin-top:1rem; padding-top:1rem; border-top:1px solid var(--rule);">
+          <strong>v0.1.3 の変更点</strong><br />
+          ・録音中のリアルタイム波形（Mic / System を上下で可視化）<br />
+          ・保存録音の静的波形（録れているか即視で確認）<br />
+          ・診断パネル（権限・対応言語・モデル準備状態を表示）<br />
+          ・録音停止後の自動文字起こし＋要約<br />
+          ・録音一覧での状態バッジ + 未処理の一括再処理<br />
+          <strong>※ 旧バージョンを使っていた方は、必ず Applications から既存の .app を
+          削除した上で再インストールしてください。</strong>
+        </p>
       </div>
 
       <div class="download-right">
         <p class="download-label">SHA-256</p>
-        <pre class="hash"><code id="sha">1ca5595910fb8aef69a02b3772a40157a813ec86f0dae6d5405907869ed2a252</code></pre>
+        <pre class="hash"><code id="sha">1f69482d4ab2fb8777adde8fd634ee75805dcc0c0c24dcbf85dc14a050521c79</code></pre>
         <button id="copy-sha" class="ghost btn-copy">SHA をコピー</button>
 
         <p class="download-label" style="margin-top:1.5rem">検証コマンド</p>
-        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.2.dmg</code></pre>
+        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.3.dmg</code></pre>
         <p class="download-label" style="margin-top:1.5rem">公証の確認</p>
         <pre class="hash"><code>spctl --assess --type execute -vv localVoiceRec.app</code></pre>
         <p class="download-fineprint">
