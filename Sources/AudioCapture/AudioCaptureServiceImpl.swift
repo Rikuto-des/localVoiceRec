@@ -480,21 +480,35 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             Self.logger.debug("level emit task ended")
         }
 
-        // ── Watchdog task: IOProc が一定時間止まったら .interrupted(.audioFlowStalled)
-        // 簡易実装: 2 秒ごとに tap.flowSnapshot() を読み、前回と同値が 2 回連続したら fire。
-        // (= 約 4 秒以上 IOProc が進んでいない)
+        // ── Watchdog task: IOProc が「一度は流れた後に」止まったら .interrupted(.audioFlowStalled)
+        //
+        // 重要: 録音開始直後はシステム音声を再生していないことが多く (会議開始前など)、
+        // callCount は HW から呼ばれていても bytesReceived が 0 のままになる。
+        // 「一度も flow が無かった」状態を「stalled」と誤判定すると、ユーザーが
+        // 録音中だと思って待っている間に `.interrupted` 三角マークが出てしまう。
+        //
+        // 修正後の判定:
+        //   - `hasFlowedOnce` フラグを持ち、bytesReceived > 0 を 1 回でも観測したら true
+        //   - flow が一度も無い間は stall 判定をスキップ (= 単なる「無音待機」とみなす)
+        //   - flow があった後に callCount/bytes が停滞 → 真の HW 切断 / 切替を疑う
+        //
+        // 判定間隔は 2 秒、連続 2 回停滞で fire (約 4 秒以上の停止)。
         let tapRef = tap
         let watchdogTask = Task.detached(priority: .utility) { [weak self] in
             var lastCallCount = tapRef.flowSnapshot().callCount
             var lastBytes = tapRef.flowSnapshot().bytesReceived
             var stallStreak = 0
+            var hasFlowedOnce = false
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
                 if Task.isCancelled { break }
                 let snap = tapRef.flowSnapshot()
+                if snap.bytesReceived > 0 {
+                    hasFlowedOnce = true
+                }
                 // 録音中以外 (paused, interrupted など) は判定をスキップしてリセット。
                 let state = await self?.currentState
-                if case .recording = state {
+                if case .recording = state, hasFlowedOnce {
                     if snap.callCount == lastCallCount && snap.bytesReceived == lastBytes {
                         stallStreak += 1
                     } else {
@@ -502,7 +516,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
                     }
                     if stallStreak >= 2 {
                         // 約 4 秒以上カウンタが進まない → HW 切替 / 切断を疑う。
-                        Self.logger.error("Watchdog: IOProc stalled (callCount=\(snap.callCount), bytes=\(snap.bytesReceived))")
+                        Self.logger.error("Watchdog: IOProc stalled after flow (callCount=\(snap.callCount), bytes=\(snap.bytesReceived))")
                         await self?.handleInterruption(reason: .audioFlowStalled)
                         stallStreak = 0
                     }

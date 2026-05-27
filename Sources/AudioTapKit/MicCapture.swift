@@ -10,10 +10,15 @@ import os.log
 ///   を直接 `AsyncStream` に yield して問題なし (Process Tap の IOProc のような RT 制約は無い)。
 /// - 出力 format は **ハードウェア由来** の `inputFormat(forBus:)`。再サンプル/変換は consumer 側責務。
 /// - 同期 ` start() ` ではなく `async` を採用しているのは Contract 全体と粒度を揃えるため。
-/// - voiceProcessingEnabled = true (既定) の場合、macOS の AUVoiceProcessing IO が
-///   有効化され、システム標準のエコーキャンセル (AEC) / ノイズサプレッション / AGC が
-///   入力に適用される。会議録音時にスピーカーから出た相手の声がマイクに回り込むのを
-///   システムレベルで除去する。format は 16kHz mono に固定される副作用がある点に注意。
+/// - voiceProcessingEnabled = false (既定) の場合、AUVoiceProcessing IO は **無効**。
+///   生のマイク入力を取得する。
+/// - voiceProcessingEnabled = true にすると、macOS の AUVoiceProcessing IO が
+///   有効化され、AEC / ノイズサプレッション / AGC が **マイク側に適用**される。
+///   ただし副作用として OS が「入力中の音声出力を ducking (音量低下)」させ、
+///   会議聴取中のユーザーがスピーカーから流れる相手の声を小さく感じる問題がある
+///   (VoIP 用設計; macOS の標準挙動)。会議録音用途では生入力 (false) が望ましい。
+///   マイク・システム音声を別チャンネル保存するため、マイクへの軽微な回り込みは
+///   ASR 上は許容範囲。
 public final class MicCapture: @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio.mic")
@@ -68,7 +73,7 @@ public final class MicCapture: @unchecked Sendable {
 
     public init(
         bufferSize: AVAudioFrameCount = 4096,
-        voiceProcessingEnabled: Bool = true
+        voiceProcessingEnabled: Bool = false
     ) {
         self.bufferSize = bufferSize
         self.voiceProcessingEnabled = voiceProcessingEnabled
