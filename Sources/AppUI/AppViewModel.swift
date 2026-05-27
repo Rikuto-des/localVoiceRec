@@ -3,6 +3,17 @@ import Observation
 import Contracts
 import ExportKit
 
+/// 一覧表示用の録音状態。
+public enum RecordingStatus: Sendable, Hashable {
+    case pending           // 文字起こし未実行
+    case transcribing      // 文字起こし中
+    case summarizing       // 要約生成中
+    case transcribed       // 文字起こしのみ完了（要約なし）
+    case completed         // 文字起こし + 要約完了
+    case emptyTranscript   // 文字起こしを試行したが空（無音/未対応言語）
+    case failed            // 直近の試行が失敗
+}
+
 /// アプリ全体の UI 状態を保持する ViewModel。
 ///
 /// すべてのサービス呼び出しを ViewModel 内に閉じ込め、View からは intent メソッド経由で
@@ -30,15 +41,39 @@ public final class AppViewModel {
     public private(set) var summaryAvailability: SummaryAvailability = .available
     public private(set) var lastError: String?
     public private(set) var isBusy: Bool = false
-    /// 文字起こしが進行中（fire-and-forget または手動）
-    public private(set) var isTranscribing: Bool = false
-    /// 要約生成が進行中
-    public private(set) var isSummarizing: Bool = false
+    /// 文字起こし進行中の録音 ID 集合
+    public private(set) var transcribingIDs: Set<UUID> = []
+    /// 要約生成中の録音 ID 集合
+    public private(set) var summarizingIDs: Set<UUID> = []
+
+    /// いずれかの録音で文字起こしが走っているか（既存 View 用の互換ラッパ）。
+    public var isTranscribing: Bool { !transcribingIDs.isEmpty }
+    /// いずれかの録音で要約生成が走っているか（既存 View 用の互換ラッパ）。
+    public var isSummarizing: Bool { !summarizingIDs.isEmpty }
+
+    /// 現在選択中の録音が文字起こし中か（View で「この録音」の進行表示に使う）。
+    public var isTranscribingSelected: Bool {
+        guard let id = selectedRecording?.id else { return false }
+        return transcribingIDs.contains(id)
+    }
+    /// 現在選択中の録音が要約生成中か。
+    public var isSummarizingSelected: Bool {
+        guard let id = selectedRecording?.id else { return false }
+        return summarizingIDs.contains(id)
+    }
 
     /// `subscribeToCaptureState()` で開始した監視タスク。
     private var stateSubscriptionTask: Task<Void, Never>?
     /// 進行中の自動パイプライン (録音 ID → Task)
     private var pipelineTasks: [UUID: Task<Void, Never>] = [:]
+    /// `select` 経由で 1 回だけ自動 transcribe を試行済みの録音 ID。
+    /// 手動「文字起こしを実行」が押されたらクリアして再試行を許可する。
+    private var autoTranscribeAttempted: Set<UUID> = []
+    /// 文字起こしが「無音/未検出」で終わった録音 ID。
+    /// 失敗 (lastError) とは別の状態として UI で区別する。
+    public private(set) var emptyTranscriptIDs: Set<UUID> = []
+    /// 一覧表示用の、録音 ID ごとの状態キャッシュ（refreshList で更新）。
+    public private(set) var recordingStatuses: [UUID: RecordingStatus] = [:]
 
     public init(
         capture: any AudioCaptureService,
@@ -110,11 +145,16 @@ public final class AppViewModel {
         }
     }
 
-    /// 録音停止後に呼ばれる、文字起こし→要約の自動パイプライン。
-    /// バックグラウンドで走り、選択中の録音であれば UI も自動更新する。
+    /// 録音停止後（および select で空 segments のとき）に呼ばれる、
+    /// 文字起こし→要約の自動パイプライン。バックグラウンドで走る。
     private func runAutoPipeline(for recording: Recording) {
         pipelineTasks[recording.id]?.cancel()
         let task = Task { @MainActor [weak self] in
+            // cancel パスでも必ずエントリ掃除 + 一覧バッジ更新
+            defer {
+                self?.pipelineTasks.removeValue(forKey: recording.id)
+                Task { @MainActor [weak self] in await self?.refreshList() }
+            }
             guard let self else { return }
             await self.transcribeRecording(recording)
             guard !Task.isCancelled else { return }
@@ -123,7 +163,6 @@ public final class AppViewModel {
             if !saved.isEmpty {
                 await self.summarizeRecording(recording, segments: saved)
             }
-            self.pipelineTasks.removeValue(forKey: recording.id)
         }
         pipelineTasks[recording.id] = task
     }
@@ -153,10 +192,35 @@ public final class AppViewModel {
     public func refreshList() async {
         do {
             recordings = try await repository.list(limit: nil, offset: nil)
+            // 各録音の状態を一括算出（一覧バッジ用）
+            var map: [UUID: RecordingStatus] = [:]
+            for r in recordings {
+                if transcribingIDs.contains(r.id) { map[r.id] = .transcribing; continue }
+                if summarizingIDs.contains(r.id) { map[r.id] = .summarizing; continue }
+                let segs = (try? await repository.loadSegments(for: r.id)) ?? []
+                if segs.isEmpty {
+                    map[r.id] = emptyTranscriptIDs.contains(r.id) ? .emptyTranscript : .pending
+                } else if (try? await repository.loadSummary(for: r.id)) != nil {
+                    map[r.id] = .completed
+                } else {
+                    map[r.id] = .transcribed
+                }
+            }
+            recordingStatuses = map
             lastError = nil
         } catch {
             lastError = "一覧の読み込みに失敗しました: \(String(describing: error))"
         }
+    }
+
+    /// 一覧表示用に、指定録音の現在状態を返す。
+    public func status(for id: UUID) -> RecordingStatus {
+        if transcribingIDs.contains(id) { return .transcribing }
+        if summarizingIDs.contains(id) { return .summarizing }
+        if emptyTranscriptIDs.contains(id), recordingStatuses[id] == nil {
+            return .emptyTranscript
+        }
+        return recordingStatuses[id] ?? .pending
     }
 
     public func search(query: String) async {
@@ -181,6 +245,29 @@ public final class AppViewModel {
             summaryDocument = loadedSummary
             summaryAvailability = await summary.availability()
             lastError = nil
+
+            // ─── 自動文字起こしトリガ（ユーザー要望: 文字起こしは自動 UX）───
+            // 条件:
+            //   1. segments が空
+            //   2. すでに進行中のパイプラインが無い
+            //   3. このセッションでまだ自動試行していない（無限ループ防止）
+            if loadedSegments.isEmpty,
+               pipelineTasks[recording.id] == nil,
+               !autoTranscribeAttempted.contains(recording.id) {
+                autoTranscribeAttempted.insert(recording.id)
+                runAutoPipeline(for: recording)
+            } else if !loadedSegments.isEmpty,
+                      loadedSummary == nil,
+                      case .available = summaryAvailability,
+                      summarizingIDs.contains(recording.id) == false,
+                      !autoTranscribeAttempted.contains(recording.id) {
+                // segments はあるが要約だけ無い → 要約のみ自動実行
+                autoTranscribeAttempted.insert(recording.id)
+                let target = loadedSegments.sorted { $0.startSec < $1.startSec }
+                Task { @MainActor [weak self] in
+                    await self?.summarizeRecording(recording, segments: target)
+                }
+            }
         } catch {
             lastError = "詳細の読み込みに失敗しました: \(String(describing: error))"
         }
@@ -198,14 +285,21 @@ public final class AppViewModel {
     /// 選択中の録音であれば `segments` を逐次更新して UI に反映する。
     ///
     /// 既に segments を持つ録音に対しても呼べる（再実行）。
+    ///
+    /// 設計メモ:
+    /// - 進行中フラグは `transcribingIDs` (Set) に id を入れる方式。複数録音同時可。
+    /// - `RecordingRepositoryImpl.saveSegments` は置換セマンティクスなので、
+    ///   ここで事前に `deleteSegments` を呼ぶ必要なし。**失敗時の意図せぬデータ消失も防ぐ。**
+    /// - `isFinal == true` のものを永続化するが、final が一切来なかった場合は
+    ///   collected を fallback として保存する（無音録音 / モデル quirk 対策）。
     public func transcribeRecording(_ recording: Recording, locale: Locale? = nil) async {
-        guard !isTranscribing else { return }
-        isTranscribing = true
-        defer { isTranscribing = false }
+        guard !transcribingIDs.contains(recording.id) else { return }
+        // 手動で押されたら自動試行フラグはクリア（再試行を解禁）
+        autoTranscribeAttempted.remove(recording.id)
+        transcribingIDs.insert(recording.id)
+        defer { transcribingIDs.remove(recording.id) }
 
-        // 既存 segments をクリア（再実行に備える）
-        do { try await repository.deleteSegments(for: recording.id) } catch { /* best-effort */ }
-
+        // UI 上のクリアだけ。永続化レイヤは saveSegments の置換に任せる。
         if selectedRecording?.id == recording.id {
             segments = []
         }
@@ -218,15 +312,31 @@ public final class AppViewModel {
                     segments = collected.sorted { $0.startSec < $1.startSec }
                 }
             }
-            // isFinal == true のものだけ永続化（仕様）
+            // isFinal == true のものを優先。0 件なら collected を fallback（UX 退行防止）。
             let finalized = collected.filter(\.isFinal).sorted { $0.startSec < $1.startSec }
-            try await repository.saveSegments(finalized, for: recording.id)
+            let toPersist = finalized.isEmpty ? collected.sorted { $0.startSec < $1.startSec } : finalized
+
+            if toPersist.isEmpty {
+                // 完全に何も拾えなかった = 無音か未対応言語の可能性。既存データは消さない。
+                emptyTranscriptIDs.insert(recording.id)
+                if selectedRecording?.id == recording.id {
+                    segments = (try? await repository.loadSegments(for: recording.id)) ?? []
+                }
+                return
+            }
+
+            emptyTranscriptIDs.remove(recording.id)
+            try await repository.saveSegments(toPersist, for: recording.id)
             if selectedRecording?.id == recording.id {
-                segments = finalized
+                segments = toPersist
             }
             lastError = nil
         } catch {
             lastError = "文字起こしに失敗しました: \(String(describing: error))"
+            // 失敗時は repository から既存 segments を復元して、過去データが消えたように見せない
+            if selectedRecording?.id == recording.id {
+                segments = (try? await repository.loadSegments(for: recording.id)) ?? []
+            }
         }
     }
 
@@ -237,7 +347,7 @@ public final class AppViewModel {
     public func summarizeRecording(_ recording: Recording, segments: [TranscriptSegment]? = nil) async {
         let target = segments ?? self.segments
         guard !target.isEmpty else { return }
-        guard !isSummarizing else { return }
+        guard !summarizingIDs.contains(recording.id) else { return }
 
         // availability を最新化
         summaryAvailability = await summary.availability()
@@ -246,8 +356,8 @@ public final class AppViewModel {
             return
         }
 
-        isSummarizing = true
-        defer { isSummarizing = false }
+        summarizingIDs.insert(recording.id)
+        defer { summarizingIDs.remove(recording.id) }
 
         do {
             let newSummary = try await summary.generate(
@@ -270,14 +380,18 @@ public final class AppViewModel {
             lastError = "文字起こしがまだありません。先に文字起こしを実行してください。"
             return
         }
+        guard !summarizingIDs.contains(recording.id) else { return }
+
         // availability を最新化
         summaryAvailability = await summary.availability()
         guard case .available = summaryAvailability else {
             lastError = "要約サービスが利用できません"
             return
         }
-        isSummarizing = true
-        defer { isSummarizing = false }
+
+        summarizingIDs.insert(recording.id)
+        defer { summarizingIDs.remove(recording.id) }
+
         do {
             let newSummary = try await summary.regenerate(
                 from: segments,

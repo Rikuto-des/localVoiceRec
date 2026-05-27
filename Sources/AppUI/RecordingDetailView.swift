@@ -11,6 +11,7 @@ struct RecordingDetailView: View {
     @Bindable var viewModel: AppViewModel
     @State private var regenerateHint: String = ""
     @State private var showHintField: Bool = false
+    @State private var showTranscribeReconfirm: Bool = false
 
     // ─── Export 関連 ───
     @State private var showFormatChooser: Bool = false
@@ -65,7 +66,7 @@ struct RecordingDetailView: View {
                 transcribeControls
             }
 
-            if viewModel.isTranscribing && viewModel.segments.isEmpty {
+            if viewModel.isTranscribingSelected && viewModel.segments.isEmpty {
                 HStack(spacing: Theme.Spacing.sm) {
                     ProgressView().controlSize(.small)
                     Text("文字起こしを実行中...")
@@ -76,13 +77,18 @@ struct RecordingDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
             } else if viewModel.segments.isEmpty {
-                emptyBox(message: "文字起こしがまだありません。「文字起こしを実行」を押してください。")
+                if let id = viewModel.selectedRecording?.id,
+                   viewModel.emptyTranscriptIDs.contains(id) {
+                    emptyBox(message: "音声内容が検出されませんでした。無音または対応言語外の可能性があります。")
+                } else {
+                    emptyBox(message: "文字起こしを準備しています…時間がかかる場合は「文字起こしを実行」を押してください。")
+                }
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.segments) { segment in
                         TranscriptBubble(segment: segment)
                     }
-                    if viewModel.isTranscribing {
+                    if viewModel.isTranscribingSelected {
                         HStack(spacing: Theme.Spacing.xs) {
                             ProgressView().controlSize(.small)
                             Text("追加の発話を解析中...")
@@ -98,13 +104,19 @@ struct RecordingDetailView: View {
 
     private var transcribeControls: some View {
         Button {
-            Task {
-                if let recording = viewModel.selectedRecording {
-                    await viewModel.transcribeRecording(recording)
+            // 初回（segments 空）はそのまま実行。
+            // 既存 segments がある場合は confirmation を出す（誤って消さない）。
+            if viewModel.segments.isEmpty {
+                Task {
+                    if let recording = viewModel.selectedRecording {
+                        await viewModel.transcribeRecording(recording)
+                    }
                 }
+            } else {
+                showTranscribeReconfirm = true
             }
         } label: {
-            if viewModel.isTranscribing {
+            if viewModel.isTranscribingSelected {
                 Label("実行中...", systemImage: "ellipsis")
             } else if viewModel.segments.isEmpty {
                 Label("文字起こしを実行", systemImage: "waveform.badge.plus")
@@ -112,7 +124,23 @@ struct RecordingDetailView: View {
                 Label("再実行", systemImage: "arrow.triangle.2.circlepath")
             }
         }
-        .disabled(viewModel.isTranscribing || viewModel.selectedRecording == nil)
+        .disabled(viewModel.isTranscribingSelected || viewModel.selectedRecording == nil)
+        .confirmationDialog(
+            "文字起こしを再実行しますか？",
+            isPresented: $showTranscribeReconfirm,
+            titleVisibility: .visible
+        ) {
+            Button("再実行する", role: .destructive) {
+                Task {
+                    if let recording = viewModel.selectedRecording {
+                        await viewModel.transcribeRecording(recording)
+                    }
+                }
+            }
+            Button("キャンセル", role: .cancel) { }
+        } message: {
+            Text("既存の文字起こし結果は上書きされます。要約も再生成が必要になる場合があります。")
+        }
     }
 
     // MARK: - Summary
@@ -127,7 +155,7 @@ struct RecordingDetailView: View {
 
             availabilityNotice
 
-            if viewModel.isSummarizing && viewModel.summaryDocument == nil {
+            if viewModel.isSummarizingSelected && viewModel.summaryDocument == nil {
                 HStack(spacing: Theme.Spacing.sm) {
                     ProgressView().controlSize(.small)
                     Text("要約を生成中...")
@@ -153,7 +181,7 @@ struct RecordingDetailView: View {
                     } label: {
                         Label("要約を生成", systemImage: "sparkles")
                     }
-                    .disabled(viewModel.isSummarizing || !isSummaryAvailable)
+                    .disabled(viewModel.isSummarizingSelected || !isSummaryAvailable)
                 }
             }
         }
@@ -209,7 +237,7 @@ struct RecordingDetailView: View {
             }
             .disabled(
                 viewModel.isBusy ||
-                viewModel.isSummarizing ||
+                viewModel.isSummarizingSelected ||
                 viewModel.segments.isEmpty ||
                 !isSummaryAvailable
             )
@@ -230,7 +258,12 @@ struct RecordingDetailView: View {
             } label: {
                 Label("エクスポート", systemImage: "square.and.arrow.up")
             }
-            .disabled(viewModel.selectedRecording == nil || isPreparingExport)
+            .disabled(
+                viewModel.selectedRecording == nil ||
+                isPreparingExport ||
+                viewModel.isTranscribingSelected ||
+                viewModel.isSummarizingSelected
+            )
             .confirmationDialog(
                 "エクスポート形式を選択",
                 isPresented: $showFormatChooser,

@@ -29,7 +29,10 @@ public struct MainScene: Scene {
         MenuBarExtra {
             MenuBarContentView(viewModel: viewModel)
         } label: {
-            MenuBarLabel(state: viewModel.captureState)
+            MenuBarLabel(
+                state: viewModel.captureState,
+                isProcessing: viewModel.isTranscribing || viewModel.isSummarizing
+            )
         }
         .menuBarExtraStyle(.window)
 
@@ -44,9 +47,11 @@ public struct MainScene: Scene {
     }
 }
 
-/// メニューバーアイコン。録音中は赤丸、停止中は通常のマイク。
+/// メニューバーアイコン。
+/// 録音中: 赤丸 / 一時停止: 橙 / 処理中（文字起こし・要約）: パルスアイコン / 待機: マイク。
 private struct MenuBarLabel: View {
     let state: CaptureState
+    let isProcessing: Bool
 
     var body: some View {
         switch state {
@@ -62,7 +67,13 @@ private struct MenuBarLabel: View {
             Image(systemName: "exclamationmark.circle")
                 .foregroundStyle(.red)
         case .idle:
-            Image(systemName: "mic.fill")
+            if isProcessing {
+                Image(systemName: "mic.badge.plus")
+                    .symbolEffect(.pulse, options: .repeating)
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "mic.fill")
+            }
         }
     }
 }

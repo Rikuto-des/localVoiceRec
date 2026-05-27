@@ -54,7 +54,10 @@ struct RecordingListView: View {
             } else {
                 List(selection: $selectedID) {
                     ForEach(viewModel.recordings) { recording in
-                        RecordingRow(recording: recording)
+                        RecordingRow(
+                            recording: recording,
+                            status: viewModel.status(for: recording.id)
+                        )
                             .tag(recording.id as Recording.ID?)
                             .contextMenu {
                                 Button(role: .destructive) {
@@ -115,12 +118,17 @@ struct RecordingListView: View {
 /// 一覧の 1 行。
 private struct RecordingRow: View {
     let recording: Recording
+    let status: RecordingStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(recording.title)
-                .font(.body)
-                .lineLimit(1)
+            HStack {
+                Text(recording.title)
+                    .font(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                StatusBadge(status: status)
+            }
             HStack(spacing: Theme.Spacing.sm) {
                 Text(AppFormatters.dateTime.string(from: recording.startedAt))
                 Text("·")
@@ -130,6 +138,48 @@ private struct RecordingRow: View {
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// 各録音の処理状態を表すコンパクトなバッジ。
+private struct StatusBadge: View {
+    let status: RecordingStatus
+
+    var body: some View {
+        switch status {
+        case .pending:
+            Image(systemName: "circle.dashed")
+                .foregroundStyle(.secondary)
+                .help("文字起こし未実行")
+        case .transcribing:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("文字起こし中").font(.caption2).foregroundStyle(.secondary)
+            }
+            .help("文字起こしを実行中")
+        case .summarizing:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("要約中").font(.caption2).foregroundStyle(.secondary)
+            }
+            .help("要約を生成中")
+        case .transcribed:
+            Image(systemName: "text.bubble.fill")
+                .foregroundStyle(.secondary)
+                .help("文字起こし済み（要約なし）")
+        case .completed:
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+                .help("文字起こし + 要約完了")
+        case .emptyTranscript:
+            Image(systemName: "speaker.slash")
+                .foregroundStyle(.secondary)
+                .help("音声内容が検出されませんでした")
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.red)
+                .help("処理に失敗しました")
+        }
     }
 }
 
