@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Contracts
 
 /// メニューバーをクリックしたときに表示される小ウィンドウ。
@@ -151,7 +152,7 @@ struct MenuBarContentView: View {
     private var footer: some View {
         VStack(spacing: Theme.Spacing.sm) {
             Button {
-                openWindow(id: RecordingListWindowID)
+                openRecordingListWindow()
             } label: {
                 Label("録音一覧を開く", systemImage: "list.bullet.rectangle")
                     .frame(maxWidth: .infinity)
@@ -166,6 +167,40 @@ struct MenuBarContentView: View {
             }
             .keyboardShortcut("q")
             .controlSize(.regular)
+        }
+    }
+
+    /// 録音一覧ウィンドウを開いて **最前面に持ってくる**。
+    ///
+    /// LSUIElement=YES のメニューバーアプリでは `openWindow` だけだとウィンドウが
+    /// 背面に開く（他アプリが key のまま）ことがある。明示的に Activate + Order Front。
+    /// 既に開いているウィンドウなら再オープンせず、既存のものをフォアグラウンド化する。
+    private func openRecordingListWindow() {
+        // 既存ウィンドウを探す（タイトルベース、フォールバックは ID マッチ）
+        let listWindow = NSApp.windows.first { win in
+            // SwiftUI が作るウィンドウは identifier に scene id を持つ
+            win.identifier?.rawValue.contains(RecordingListWindowID) == true
+                || win.title == "録音一覧"
+        }
+
+        if let existing = listWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            existing.makeKeyAndOrderFront(nil)
+            existing.orderFrontRegardless()
+        } else {
+            // 初回オープン
+            openWindow(id: RecordingListWindowID)
+            // SwiftUI の Window が生成されるまでわずかに待つ
+            DispatchQueue.main.async {
+                NSApp.activate(ignoringOtherApps: true)
+                if let w = NSApp.windows.first(where: {
+                    $0.identifier?.rawValue.contains(RecordingListWindowID) == true
+                        || $0.title == "録音一覧"
+                }) {
+                    w.makeKeyAndOrderFront(nil)
+                    w.orderFrontRegardless()
+                }
+            }
         }
     }
 }
