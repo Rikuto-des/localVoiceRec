@@ -13,6 +13,20 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "26.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    Release:
+      # コンパイラ: サイズ優先 + WMO + LTO で機械語を最小化
+      SWIFT_OPTIMIZATION_LEVEL: "-Osize"
+      SWIFT_COMPILATION_MODE: wholemodule
+      GCC_OPTIMIZATION_LEVEL: s
+      LLVM_LTO: YES
+      # リンカ: 未使用シンボル除去 + Swift シンボルも strip
+      DEAD_CODE_STRIPPING: YES
+      STRIP_SWIFT_SYMBOLS: YES
+      # アサーション無効化 (Release のみ)
+      ENABLE_NS_ASSERTIONS: NO
+      # dSYM は別途生成し、配布バイナリには debug info を含めない
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
 
 packages:
   localVoiceRec:

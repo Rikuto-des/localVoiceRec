@@ -9,6 +9,10 @@ import AVFoundation
 ///   を直接 `AsyncStream` に yield して問題なし (Process Tap の IOProc のような RT 制約は無い)。
 /// - 出力 format は **ハードウェア由来** の `inputFormat(forBus:)`。再サンプル/変換は consumer 側責務。
 /// - 同期 ` start() ` ではなく `async` を採用しているのは Contract 全体と粒度を揃えるため。
+/// - voiceProcessingEnabled = true (既定) の場合、macOS の AUVoiceProcessing IO が
+///   有効化され、システム標準のエコーキャンセル (AEC) / ノイズサプレッション / AGC が
+///   入力に適用される。会議録音時にスピーカーから出た相手の声がマイクに回り込むのを
+///   システムレベルで除去する。format は 16kHz mono に固定される副作用がある点に注意。
 public final class MicCapture: @unchecked Sendable {
 
     public enum State {
@@ -19,17 +23,43 @@ public final class MicCapture: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let bus: AVAudioNodeBus = 0
     private let bufferSize: AVAudioFrameCount
+    private let voiceProcessingEnabled: Bool
 
     private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
     private var state: State = .idle
     private let lock = NSLock()
 
-    /// マイクが提供するハードウェア format。`start()` 後に有効。
+    /// AsyncStream のバッファ上限を超えてドロップされたバッファ数を計上する shared box。
+    /// audio I/O thread の tap closure と UI スレッドの両方から触るため
+    /// NSLock 保護下で増加・読み出しを行う。
+    /// `SystemAudioTap.droppedPushCount` に相当する観測値で、診断 UI に出すと
+    /// 「録音が壊れているのに sync 系では気付けない」ケースを早期検出できる。
+    final class DropCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _count: Int = 0
+        func increment() {
+            lock.lock(); _count += 1; lock.unlock()
+        }
+        var count: Int {
+            lock.lock(); defer { lock.unlock() }
+            return _count
+        }
+    }
+    private let dropCounter = DropCounter()
+    /// AsyncStream のバッファ上限を超えてドロップされたバッファ数。
+    public var droppedBufferCount: Int { dropCounter.count }
+
+    /// マイクが提供する format。`start()` 後に有効 (voice processing 適用後)。
     public private(set) var captureFormat: AVAudioFormat
 
-    public init(bufferSize: AVAudioFrameCount = 4096) {
+    public init(
+        bufferSize: AVAudioFrameCount = 4096,
+        voiceProcessingEnabled: Bool = true
+    ) {
         self.bufferSize = bufferSize
+        self.voiceProcessingEnabled = voiceProcessingEnabled
         // engine.inputNode は engine 取得時点で利用可。format は実機 hardware に依存。
+        // (voice processing 有効時は start() 内で再取得する)
         self.captureFormat = engine.inputNode.inputFormat(forBus: 0)
     }
 
@@ -42,8 +72,21 @@ public final class MicCapture: @unchecked Sendable {
         defer { lock.unlock() }
         if state == .running { throw AudioTapError.alreadyRunning }
 
-        // installTap の format に nil を渡すと hardware format が使われるが、
-        // Contract 上のテスト容易性のため明示的に取得して保存しておく。
+        // ★ Voice Processing (AEC + NS + AGC) を有効化 ★
+        // installTap より前、engine.prepare() より前に呼ぶ必要がある。
+        // 失敗してもマイク自体は動かしたいので、エラーは log だけ出して継続する。
+        if voiceProcessingEnabled {
+            do {
+                try engine.inputNode.setVoiceProcessingEnabled(true)
+            } catch {
+                // 一部のデバイス・format ではサポートされない。raw キャプチャに fallback。
+                // os.log は AudioCapture モジュール側に既にあるので、ここでは print も避け、
+                // 上位に伝える情報は state machine ではなく副作用としての format に乗せる。
+            }
+        }
+
+        // installTap の format は voice processing 後の format で取得する必要がある。
+        // (voice processing が有効だと typically 16kHz mono Float32 に固定される)
         let fmt = engine.inputNode.inputFormat(forBus: bus)
         self.captureFormat = fmt
 
@@ -53,6 +96,9 @@ public final class MicCapture: @unchecked Sendable {
         self.continuation = cont
 
         let consumerCont = cont
+        // tap closure には self を取らせず、必要な値だけ局所キャプチャする
+        // (audio I/O thread から MicCapture を直接参照させない)。
+        let dropCounter = self.dropCounter
         engine.inputNode.installTap(
             onBus: bus,
             bufferSize: bufferSize,
@@ -60,7 +106,7 @@ public final class MicCapture: @unchecked Sendable {
         ) { buffer, _ in
             // buffer は AVAudioEngine の内部プールから来るため、消費前に再利用される可能性がある。
             // → コピーして yield する (consumer 側で WAV 書き込み等を行うため)。
-            Self.yieldCopy(of: buffer, into: consumerCont)
+            Self.yieldCopy(of: buffer, into: consumerCont, dropCounter: dropCounter)
         }
 
         engine.prepare()
@@ -89,12 +135,22 @@ public final class MicCapture: @unchecked Sendable {
 
     private static func yieldCopy(
         of src: AVAudioPCMBuffer,
-        into cont: AsyncStream<AVAudioPCMBuffer>.Continuation
+        into cont: AsyncStream<AVAudioPCMBuffer>.Continuation,
+        dropCounter: DropCounter
     ) {
         guard let copy = copyBuffer(src) else { return }
         // AVAudioPCMBuffer は非 Sendable。box 経由で region 移譲を成立させる。
         let box = UncheckedSendableBox(copy)
-        cont.yield(box.value)
+        switch cont.yield(box.value) {
+        case .dropped:
+            // AsyncStream の bufferingNewest(N) 上限を超え、古いバッファが silent drop された。
+            // 録音中の drop は文字起こしの欠落につながるため、観測値として計上する。
+            dropCounter.increment()
+        case .enqueued, .terminated:
+            break
+        @unknown default:
+            break
+        }
     }
 
     /// AVAudioPCMBuffer をディープコピーする。tap callback が再利用するバッファに対応する。

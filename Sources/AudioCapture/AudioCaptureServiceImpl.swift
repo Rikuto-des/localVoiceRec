@@ -149,8 +149,13 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             transition(to: .failed(error: err))
             throw err
         }
-        let micURL = outputDirectory.appendingPathComponent("mic.wav")
-        let systemURL = outputDirectory.appendingPathComponent("system.wav")
+        // 録音ファイルは ALAC (Apple Lossless, m4a コンテナ) で保存する。
+        // PCM (WAV) 比で約 50-70% のサイズ削減。可逆圧縮なので品質劣化なし。
+        // 既存の .wav 録音 (旧バージョン) も AVAudioFile で読めるので互換性は維持される。
+        let audioContainer: WAVFileWriter.Format = .alac
+        let ext = audioContainer.fileExtension
+        let micURL = outputDirectory.appendingPathComponent("mic.\(ext)")
+        let systemURL = outputDirectory.appendingPathComponent("system.\(ext)")
 
         // ── MicCapture 起動
         let mic = MicCapture(bufferSize: 4096)
@@ -183,11 +188,11 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             throw err
         }
 
-        // ── WAVFileWriter 準備
+        // ── 可逆音声ライタ準備 (ALAC / .m4a)
         let micWriter: WAVFileWriter
         let systemWriter: WAVFileWriter
         do {
-            micWriter = try WAVFileWriter(url: micURL, format: mic.captureFormat)
+            micWriter = try WAVFileWriter(url: micURL, format: mic.captureFormat, containerFormat: audioContainer)
         } catch {
             mic.stop()
             tap.stop()
@@ -196,7 +201,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             throw err
         }
         do {
-            systemWriter = try WAVFileWriter(url: systemURL, format: tap.captureFormat)
+            systemWriter = try WAVFileWriter(url: systemURL, format: tap.captureFormat, containerFormat: audioContainer)
         } catch {
             mic.stop()
             tap.stop()
@@ -462,15 +467,24 @@ private struct ActiveSession {
 /// `LevelAccumulator` への投入は **pause 中も行う** (UI のレベルメーターは録音中も
 /// pause 中も「実音」を見せたい想定。ファイル書き込みのみ止める)。
 final class WriterSink: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio.write")
     private let lock = NSLock()
     private var writer: WAVFileWriter?
     private var paused: Bool = false
     private var closed: Bool = false
+    private var writeFailureCount: Int = 0
     private let accumulator: LevelAccumulator
 
     init(writer: WAVFileWriter, accumulator: LevelAccumulator) {
         self.writer = writer
         self.accumulator = accumulator
+    }
+
+    /// 累積 write 失敗回数 (UI/診断用)。
+    /// ディスク満杯・I/O エラー等のサイレントフェイルを観測可能にする。
+    var failureCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return writeFailureCount
     }
 
     func setPaused(_ value: Bool) {
@@ -488,11 +502,20 @@ final class WriterSink: @unchecked Sendable {
         let w = writer
         lock.unlock()
         guard shouldWrite, let w else { return }
-        // write 失敗は log だけ。ストリームは継続させる (途中で潰さない)。
         do {
             try w.write(buffer)
         } catch {
-            // 致命的ではないため握り潰す。実運用で頻発する場合は state.failed への昇格を検討。
+            // ストリームは継続させる (途中で潰さない) が、サイレントフェイルを避けるため
+            // 失敗回数を計上し、os.log にも 1 件ごとに記録する。
+            // ディスク満杯・I/O エラー時、actor 側が failureCount を監視して
+            // 必要なら state.failed へ昇格できる。
+            lock.lock()
+            writeFailureCount += 1
+            let count = writeFailureCount
+            lock.unlock()
+            Self.logger.error(
+                "WriterSink.write failed (count=\(count)): \(String(describing: error))"
+            )
         }
     }
 

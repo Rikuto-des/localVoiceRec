@@ -61,6 +61,20 @@ echo "==> staging into $STAGING_APP"
 cp -R "$APP_PATH" "$STAGING_APP"
 xattr -cr "$STAGING_APP"
 
+# strip: __LINKEDIT のシンボルテーブル除去 (codesign 前に実施。strip 後に再署名が必須)
+# -r: 局所シンボル保持なし
+# -S: デバッグシンボル除去
+# -T: Swift extra symbol テーブル除去 (Xcode 14+)
+# -x: 全ローカルシンボル除去
+MAIN_BINARY="$STAGING_APP/Contents/MacOS/localVoiceRec"
+if [[ -f "$MAIN_BINARY" ]]; then
+    SIZE_BEFORE=$(stat -f%z "$MAIN_BINARY")
+    echo "==> strip $MAIN_BINARY (before: $SIZE_BEFORE bytes)"
+    strip -rSTx "$MAIN_BINARY" 2>/dev/null || strip -S "$MAIN_BINARY"
+    SIZE_AFTER=$(stat -f%z "$MAIN_BINARY")
+    echo "    after: $SIZE_AFTER bytes ($(( (SIZE_BEFORE - SIZE_AFTER) * 100 / SIZE_BEFORE ))% reduction)"
+fi
+
 ENTITLEMENTS="App/localVoiceRec.entitlements"
 # entitlement ファイルも掃除（読み込み時に拒否されるケースに備える）
 xattr -c "$ENTITLEMENTS" 2>/dev/null || true

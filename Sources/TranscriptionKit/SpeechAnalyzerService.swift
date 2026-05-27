@@ -236,8 +236,13 @@ public actor SpeechAnalyzerService: TranscriptionService {
 
         // analyzer を回す
         do {
+            // analyzeSequence は inputSequence が finish するまで返らない。
+            // feedTask が inputBuilder.finish() を呼んで初めて完了するため、
+            // この行の後では feedTask は実質終了している。
+            // ただし feedTask が throw した場合はその例外を再 throw する必要があるため、
+            // 念のため .value で待機する (この時点で既に完了済み or 完了直前)。
             let lastSampleTime = try await analyzer.analyzeSequence(inputSequence)
-            try await feedTask.value  // 投入完了を待つ（finish 済み）
+            try await feedTask.value
             if let lastSampleTime {
                 try await analyzer.finalizeAndFinish(through: lastSampleTime)
             } else {
@@ -354,7 +359,9 @@ public actor SpeechAnalyzerService: TranscriptionService {
 }
 
 /// `AVAudioConverter.convert(to:error:withInputFrom:)` の入力ブロックに渡す状態。
-/// 旧コードで残骸として残しているが、現実装は同期 API を使うので参照されない。
+/// チャンク 1 個ぶんを 1 度だけ供給し、2 回目の呼び出しで `.endOfStream` を返す
+/// 「ワンショット供給」モード。各イテレーションで converter を作り直しているため、
+/// state も常に新規インスタンスで作られる。
 private final class ConverterFeedState: @unchecked Sendable {
     private var supplied = false
     private let buffer: AVAudioPCMBuffer
