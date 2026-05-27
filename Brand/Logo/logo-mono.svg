@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- localVoiceRec — monochrome single-color version (ink only) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="#1B1816"/>
+  <g fill="#F4EFE6">
+    <rect x="248" y="392" width="64" height="240" rx="32" ry="32"/>
+    <rect x="352" y="288" width="64" height="448" rx="32" ry="32"/>
+    <rect x="456" y="216" width="72" height="592" rx="36" ry="36"/>
+    <rect x="568" y="320" width="64" height="384" rx="32" ry="32"/>
+    <rect x="672" y="416" width="64" height="192" rx="32" ry="32"/>
+    <circle cx="800" cy="224" r="68"/>
+  </g>
+</svg>

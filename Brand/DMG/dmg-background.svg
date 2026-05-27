@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DMG mount-screen background — 540 x 380 (logical points).
+  Designed at @2x = 1080 x 760 for retina sharpness.
+  Aesthetic: editorial / printed instruction card.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 760" width="1080" height="760">
+  <!-- paper background -->
+  <rect x="0" y="0" width="1080" height="760" fill="#F4EFE6"/>
+
+  <!-- soft grain via subtle vignette band at top, like printed margin -->
+  <rect x="0" y="0" width="1080" height="60" fill="#EDE5D6"/>
+  <line x1="0" y1="60" x2="1080" y2="60" stroke="#1B1816" stroke-opacity="0.18" stroke-width="1.5"/>
+
+  <!-- top strip: brand wordmark on left, edition note on right -->
+  <g transform="translate(56,38)" fill="#1B1816">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="700" font-size="22"
+          letter-spacing="-0.5">localVoiceRec</text>
+  </g>
+  <g transform="translate(1024,38)" fill="#1B1816" fill-opacity="0.65" text-anchor="end">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="500" font-size="16"
+          letter-spacing="2">INSTALL · MACOS</text>
+  </g>
+
+  <!-- bottom rule + caption like a print folio -->
+  <line x1="0" y1="700" x2="1080" y2="700" stroke="#1B1816" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(56,732)" fill="#1B1816" fill-opacity="0.55">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="500" font-size="14"
+          letter-spacing="2">FIELD NOTE · ISSUE 16</text>
+  </g>
+  <g transform="translate(1024,732)" fill="#1B1816" fill-opacity="0.55" text-anchor="end">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="500" font-size="14"
+          letter-spacing="2">DRAG · DROP · DONE</text>
+  </g>
+
+  <!-- center headline -->
+  <g transform="translate(540,170)" fill="#1B1816" text-anchor="middle">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="700" font-size="44"
+          letter-spacing="-1">Install localVoiceRec</text>
+  </g>
+  <g transform="translate(540,212)" fill="#1B1816" fill-opacity="0.7" text-anchor="middle">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="500" font-size="20"
+          letter-spacing="0.4">Drag the app on the left into the Applications folder on the right.</text>
+  </g>
+
+  <!--
+    Hand-drawn instruction arrow between the two icon slots.
+    create-dmg places icons at (140,200) and (400,200) in 540x380 space.
+    That maps to (280,400) and (800,400) in our 1080x760 canvas.
+    Each Finder icon slot is ~96px logical => 192px @2x; label sits below.
+    Arrow should span between them, roughly y=400.
+  -->
+  <g transform="translate(0,0)" fill="none" stroke="#A0392B" stroke-width="5" stroke-linecap="round">
+    <!-- slight wavy stroke, like hand-inked -->
+    <path d="M 410 400
+             Q 470 380, 540 400
+             T 670 400"
+          stroke-dasharray="2 0"/>
+  </g>
+  <!-- arrowhead pointing right toward Applications -->
+  <g fill="#A0392B">
+    <polygon points="670,400 642,386 642,414"/>
+  </g>
+
+  <!-- small caption above the arrow -->
+  <g transform="translate(540,358)" fill="#A0392B" text-anchor="middle">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="700" font-size="18"
+          letter-spacing="3">DRAG TO INSTALL</text>
+  </g>
+
+  <!-- subtle slot guides where icons will sit (just a hint, not full circles) -->
+  <g stroke="#1B1816" stroke-opacity="0.10" stroke-width="1.5" fill="none">
+    <rect x="220" y="340" width="120" height="120" rx="20"/>
+    <rect x="740" y="340" width="120" height="120" rx="20"/>
+  </g>
+
+  <!-- tiny editorial note bottom-center -->
+  <g transform="translate(540,620)" fill="#1B1816" fill-opacity="0.55" text-anchor="middle">
+    <text x="0" y="0"
+          font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          font-weight="500" font-size="16"
+          letter-spacing="0.3">Open the Applications folder afterward to launch.</text>
+  </g>
+
+  <!-- corner seal mark, top-right -->
+  <g transform="translate(1004,108)">
+    <circle cx="0" cy="0" r="18" fill="#A0392B"/>
+    <circle cx="-4" cy="-4" r="3" fill="#F4EFE6" fill-opacity="0.25"/>
+  </g>
+</svg>

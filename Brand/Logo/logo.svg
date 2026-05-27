@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  localVoiceRec — master logo (1024x1024)
+  Editorial / hand-printed tone.
+  Palette:
+    ink   #1B1816
+    paper #F4EFE6
+    green #224431
+    seal  #A0392B
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- rounded-square background (paper) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="#F4EFE6"/>
+
+  <!-- inner ink panel, like a print plate, slightly inset -->
+  <rect x="96" y="96" width="832" height="832" rx="160" ry="160" fill="#1B1816"/>
+
+  <!-- thin hairline frame inside the ink, evokes typeset border -->
+  <rect x="148" y="148" width="728" height="728" rx="120" ry="120"
+        fill="none" stroke="#F4EFE6" stroke-opacity="0.18" stroke-width="3"/>
+
+  <!-- waveform: 5 bars, varying heights, centered horizontally.
+       Each bar is a rounded rect in paper color. -->
+  <g fill="#F4EFE6">
+    <!-- bar 1 -->
+    <rect x="296" y="416" width="56" height="192" rx="28" ry="28"/>
+    <!-- bar 2 (tall) -->
+    <rect x="388" y="320" width="56" height="384" rx="28" ry="28"/>
+    <!-- bar 3 (tallest, center) -->
+    <rect x="480" y="248" width="64" height="528" rx="32" ry="32"/>
+    <!-- bar 4 -->
+    <rect x="580" y="352" width="56" height="320" rx="28" ry="28"/>
+    <!-- bar 5 -->
+    <rect x="672" y="432" width="56" height="160" rx="28" ry="28"/>
+  </g>
+
+  <!-- recording dot — printed seal, top-right -->
+  <circle cx="788" cy="236" r="60" fill="#A0392B"/>
+  <!-- tiny seal highlight (paper-tone notch), gives it a hand-stamped feel -->
+  <circle cx="772" cy="220" r="10" fill="#F4EFE6" fill-opacity="0.16"/>
+</svg>
