@@ -1,0 +1,10 @@
+# Place release .dmg files here.
+# Filename convention: localVoiceRec-<version>.dmg
+# These are typically NOT committed to git — upload to Cloudflare Pages
+# via either:
+#   (a) git LFS (set up separately)
+#   (b) direct upload to the Cloudflare Pages assets via `wrangler pages deploy`
+#   (c) external CDN linked via the download button
+#
+# For development, you can copy from dist/:
+#   cp ../../dist/localVoiceRec-0.1.0.dmg .

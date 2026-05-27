@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>localVoiceRec — 会議を Mac の中だけで</title>
+  <meta name="description" content="マイク音声と Mac のシステム音声を 2 チャンネルで収録し、文字起こしと要約を端末内で完結させる macOS アプリ。外部送信ゼロ。" />
+  <meta name="theme-color" content="#1B1816" />
+  <meta property="og:title" content="localVoiceRec" />
+  <meta property="og:description" content="会議録音から議事録まで、すべてデバイスの中で。" />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ─────────────────────────────────────────────
+     Top stripe — 印刷物のキャプションみたいに
+     ───────────────────────────────────────────── -->
+<header class="topstripe" role="banner">
+  <div class="wrap">
+    <span class="topstripe-left">localVoiceRec</span>
+    <span class="topstripe-mid">macOS · オンデバイス · 社内向け</span>
+    <span class="topstripe-right">v0.1.0 · 2026 · Issue 01</span>
+  </div>
+</header>
+
+<!-- ─────────────────────────────────────────────
+     Hero
+     ───────────────────────────────────────────── -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="hero-left">
+        <p class="eyebrow">Field Note · 01</p>
+        <h1>
+          会議を、<br />
+          Mac の<em>中だけで</em>。
+        </h1>
+        <p class="hero-lead">
+          マイクとシステム音声を 2 チャンネルで同時収録し、<br />
+          文字起こしと構造化要約まで、ネットワークを使わずに完了させる macOS アプリ。
+        </p>
+
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#download">
+            <span class="btn-label">ダウンロード</span>
+            <span class="btn-meta">.dmg · 824 KB</span>
+          </a>
+          <p class="hero-fineprint">
+            macOS 26 (Tahoe) ／ Apple Silicon ／ Apple Intelligence 有効
+          </p>
+        </div>
+      </div>
+
+      <aside class="hero-right">
+        <figure class="window">
+          <div class="window-bar">
+            <span class="dot dot-r"></span>
+            <span class="dot dot-y"></span>
+            <span class="dot dot-g"></span>
+            <span class="window-title">menu bar</span>
+          </div>
+          <div class="window-body">
+            <div class="menubar-mock">
+              <span class="menubar-icon">●</span>
+              <div class="menubar-card">
+                <div class="menubar-row">
+                  <strong>localVoiceRec</strong>
+                  <span class="status status-recording">録音中</span>
+                </div>
+                <p class="menubar-meta">開始 14:32:08 · 経過 12:34</p>
+                <div class="menubar-buttons">
+                  <button class="ghost">一時停止</button>
+                  <button class="primary">停止</button>
+                </div>
+                <hr />
+                <p class="menubar-meta dim">録音は外部に一切送信されません</p>
+              </div>
+            </div>
+          </div>
+        </figure>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     Manifesto / 3 pillars
+     ───────────────────────────────────────────── -->
+<section class="section section-manifesto">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 01</span>
+      <h2>送らない、ではなく、<em>送れない</em>。</h2>
+    </div>
+
+    <div class="pillars">
+      <article class="pillar">
+        <p class="pillar-num">01</p>
+        <h3>ネットワーク権限を持たない</h3>
+        <p>
+          App Sandbox を有効化したうえで、ネットワーク関連の entitlement
+          を一切付与していません。「実装で送らない」のではなく、OS レベルで
+          送る経路自体を持たない設計です。
+        </p>
+      </article>
+
+      <article class="pillar">
+        <p class="pillar-num">02</p>
+        <h3>オフラインで完結する</h3>
+        <p>
+          文字起こしは macOS 26 の <em>SpeechAnalyzer</em>、要約は
+          <em>Foundation Models</em>（Apple Intelligence のオンデバイス
+          モデル）で行います。録音から議事録までインターネットは不要です。
+        </p>
+      </article>
+
+      <article class="pillar">
+        <p class="pillar-num">03</p>
+        <h3>会議アプリにボットを参加させない</h3>
+        <p>
+          Zoom や Teams、Meet のいずれでも、ボットを招待する必要はありません。
+          Mac が再生・収音している音声を Core Audio で直接取得するので、
+          相手にも気づかれず録音できます。
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     Inside the bundle (entitlements artifact)
+     ───────────────────────────────────────────── -->
+<section class="section section-inside">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 02</span>
+      <h2>アプリの中身を、覗いてみる。</h2>
+    </div>
+
+    <div class="inside-grid">
+      <div class="inside-text">
+        <p class="lede">
+          <code>codesign --display --entitlements -</code> でアプリの権限を取り出すと、
+          こうなっています。
+        </p>
+        <p>
+          ネットワーク関連の <code>com.apple.security.network.*</code> が
+          <strong>存在しないこと</strong>を、出荷前のリリースチェックリストで
+          毎回確認しています。
+        </p>
+        <p>
+          書き込み権限はユーザーが Save Panel で明示的に選んだファイルのみ
+          (<code>files.user-selected.read-write</code>) で、サンドボックスの
+          外側にこちらから手を伸ばすことはできません。
+        </p>
+      </div>
+
+      <figure class="codeblock">
+        <figcaption>codesign output · 抜粋</figcaption>
+        <pre><code><span class="c-key">[Key]</span> com.apple.security.app-sandbox
+  <span class="c-val">[Bool]</span> true
+
+<span class="c-key">[Key]</span> com.apple.security.device.audio-input
+  <span class="c-val">[Bool]</span> true
+
+<span class="c-key">[Key]</span> com.apple.security.files.user-selected.read-write
+  <span class="c-val">[Bool]</span> true
+
+<span class="c-comment"># network.client / network.server — 存在しない</span></code></pre>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     How it works
+     ───────────────────────────────────────────── -->
+<section class="section section-how">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 03</span>
+      <h2>三つの工程。</h2>
+    </div>
+
+    <ol class="how">
+      <li>
+        <p class="how-num">I</p>
+        <h3>収録</h3>
+        <p class="how-lead">マイクとシステム音声を、別チャンネルで。</p>
+        <p>
+          自分の声は <code>AVAudioEngine</code> で、相手の声は
+          Core Audio の process tap で取得します。話者分離は AI 推定ではなく
+          チャンネルで確定するため、誤判定がありません。
+        </p>
+      </li>
+      <li>
+        <p class="how-num">II</p>
+        <h3>文字起こし</h3>
+        <p class="how-lead">2 系統の音声を、それぞれ独立に。</p>
+        <p>
+          各チャンネルを SpeechAnalyzer に流し、タイムスタンプ付きで
+          書き起こします。日本語・英語に対応。
+        </p>
+      </li>
+      <li>
+        <p class="how-num">III</p>
+        <h3>構造化要約</h3>
+        <p class="how-lead">議事録のかたちに。</p>
+        <p>
+          Foundation Models の <code>@Generable</code> を使って、概要・決定事項・
+          アクションアイテム・未解決の問い・レビュー項目に整理します。
+        </p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     Export / 議事録の形式
+     ───────────────────────────────────────────── -->
+<section class="section section-export">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 04</span>
+      <h2>議事録は、テキストになる。</h2>
+    </div>
+
+    <div class="export-grid">
+      <div class="export-text">
+        <p class="lede">
+          詳細ビューから「エクスポート」を選ぶと、議事録を
+          Markdown またはプレーンテキストで書き出せます。
+        </p>
+        <p>
+          保存先は OS の Save Panel で都度ユーザーが選びます。Slack に
+          貼っても、Notion に貼っても、社内 Wiki に貼っても、整った形で残ります。
+        </p>
+        <ul class="bullets">
+          <li>Markdown (<code>.md</code>) — 見出しと箇条書きで構造化</li>
+          <li>プレーンテキスト (<code>.txt</code>) — 装飾なし、コピペ向き</li>
+        </ul>
+      </div>
+
+      <figure class="codeblock codeblock-md">
+        <figcaption>Meeting_20260527.md</figcaption>
+<pre><code><span class="m-h1"># 2026-05-27 ロードマップ確認</span>
+
+- <span class="m-key">日時</span>: 2026-05-27 14:30 〜 15:30 (60 分)
+
+<span class="m-h2">## 概要</span>
+
+Q3 の優先順位を整理し、Phase 1 から Phase 2 への
+受け渡しを確定した。
+
+<span class="m-h2">## 決定事項</span>
+
+- 録音・文字起こし・要約は完全オンデバイスで進める
+- Phase 2 のテスト計画を翌週金曜までに策定
+
+<span class="m-h2">## アクションアイテム</span>
+
+- [ ] テスト計画ドラフト（担当: 佐藤、期限: 06-03）
+- [ ] セキュリティレビュー依頼（担当: 未割当）
+
+<span class="m-h2">## 文字起こし</span>
+
+<span class="m-em">[00:00]</span> <span class="m-spk">mic</span>: では、本日のアジェンダから...
+<span class="m-em">[00:03]</span> <span class="m-spk">system</span>: 了解しました。まず...</code></pre>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     Requirements
+     ───────────────────────────────────────────── -->
+<section class="section section-req">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 05</span>
+      <h2>動作環境。</h2>
+    </div>
+
+    <dl class="req">
+      <div>
+        <dt>OS</dt>
+        <dd>macOS 26 (Tahoe) 以降</dd>
+      </div>
+      <div>
+        <dt>CPU</dt>
+        <dd>Apple Silicon（M1 以降）</dd>
+      </div>
+      <div>
+        <dt>メモリ</dt>
+        <dd>8 GB 以上を推奨</dd>
+      </div>
+      <div>
+        <dt>Apple Intelligence</dt>
+        <dd>システム設定で有効化されていること</dd>
+      </div>
+      <div>
+        <dt>ネットワーク</dt>
+        <dd>不要</dd>
+      </div>
+      <div>
+        <dt>権限</dt>
+        <dd>マイク／システム音声録音</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     Download
+     ───────────────────────────────────────────── -->
+<section class="section section-download" id="download">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 06</span>
+      <h2>ダウンロード。</h2>
+    </div>
+
+    <div class="download-card">
+      <div class="download-left">
+        <p class="download-version">version <strong>0.1.0</strong></p>
+        <p class="download-build">released 2026-05-27 · build 1</p>
+        <a class="btn btn-primary btn-lg" href="/downloads/localVoiceRec-0.1.0.dmg" download>
+          <span class="btn-label">localVoiceRec-0.1.0.dmg</span>
+          <span class="btn-meta">.dmg · 824 KB</span>
+        </a>
+        <p class="download-note">
+          ※ 配布版は Developer ID 署名 + Notarization 済み。<br />
+          ダウンロード後、SHA-256 を必ず照合してください。
+        </p>
+      </div>
+
+      <div class="download-right">
+        <p class="download-label">SHA-256</p>
+        <pre class="hash"><code id="sha">3aaa361928508a6957422284275ce6f742d7b2b441544a2fe310248371c39ff0</code></pre>
+        <button id="copy-sha" class="ghost btn-copy">SHA をコピー</button>
+
+        <p class="download-label" style="margin-top:1.5rem">検証コマンド</p>
+        <pre class="hash"><code>shasum -a 256 ~/Downloads/localVoiceRec-0.1.0.dmg</code></pre>
+        <p class="download-label" style="margin-top:1.5rem">公証の確認</p>
+        <pre class="hash"><code>spctl --assess --type execute -vv localVoiceRec.app</code></pre>
+        <p class="download-fineprint">
+          <code>source=Notarized Developer ID</code> が出ていれば OK。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule" />
+
+<!-- ─────────────────────────────────────────────
+     FAQ
+     ───────────────────────────────────────────── -->
+<section class="section section-faq">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">§ 07</span>
+      <h2>よくある質問。</h2>
+    </div>
+
+    <dl class="faq">
+      <div>
+        <dt>本当に外部に送信していないのか？</dt>
+        <dd>
+          App Sandbox を有効にしたうえで、<code>com.apple.security.network.client</code>
+          と <code>com.apple.security.network.server</code> のどちらも entitlement に
+          含めていません。OS がアプリのソケット作成を拒否します。
+          <code>codesign --display --entitlements -</code> で確認できます。
+        </dd>
+      </div>
+      <div>
+        <dt>Apple Intelligence のモデルは外部通信しているのでは？</dt>
+        <dd>
+          オンデバイスモデル（約 3B）が端末内で推論を行います。
+          Private Cloud Compute へのフォールバックは本アプリでは使いません
+          （ネットワーク entitlement がないため、技術的に経路がない）。
+        </dd>
+      </div>
+      <div>
+        <dt>会議の相手に「録音中」と気づかれるか？</dt>
+        <dd>
+          会議アプリにボットを招待しないため、相手側からはこのアプリの存在は見えません。
+          相手への録音同意は、社内ポリシーと法令に従って別途取得してください。
+        </dd>
+      </div>
+      <div>
+        <dt>録音データはどこに保存される？</dt>
+        <dd>
+          アプリのサンドボックス内、<code>~/Library/Containers/com.example.localVoiceRec/</code>
+          の下です。アプリから個別／一括削除でき、削除時はファイル実体も同時に消去されます。
+        </dd>
+      </div>
+      <div>
+        <dt>ソースコードは公開されているか？</dt>
+        <dd>
+          仕様書・ソース・テスト・配布手順は GitHub で公開しています。
+          <a href="https://github.com/Rikuto-des/localVoiceRec">Rikuto-des/localVoiceRec</a>
+        </dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────
+     Colophon footer
+     ───────────────────────────────────────────── -->
+<footer class="colophon">
+  <div class="wrap">
+    <div class="colophon-grid">
+      <div>
+        <p class="colophon-label">Source</p>
+        <p><a href="https://github.com/Rikuto-des/localVoiceRec">github.com/Rikuto-des/localVoiceRec</a></p>
+      </div>
+      <div>
+        <p class="colophon-label">Spec</p>
+        <p><a href="https://github.com/Rikuto-des/localVoiceRec/blob/main/docs/spec.md">docs/spec.md</a></p>
+      </div>
+      <div>
+        <p class="colophon-label">Security</p>
+        <p><a href="https://github.com/Rikuto-des/localVoiceRec/blob/main/docs/security-audit.md">docs/security-audit.md</a></p>
+      </div>
+      <div>
+        <p class="colophon-label">Set in</p>
+        <p>Noto Serif JP &amp; Inter</p>
+      </div>
+    </div>
+
+    <p class="colophon-bottom">
+      © 2026 localVoiceRec · 社内限定配布
+    </p>
+  </div>
+</footer>
+
+<script>
+  // SHA コピー
+  document.getElementById('copy-sha')?.addEventListener('click', async () => {
+    const sha = document.getElementById('sha').textContent.trim();
+    try {
+      await navigator.clipboard.writeText(sha);
+      const btn = document.getElementById('copy-sha');
+      const orig = btn.textContent;
+      btn.textContent = 'コピーしました';
+      setTimeout(() => { btn.textContent = orig; }, 1600);
+    } catch (_) {
+      window.prompt('SHA-256', sha);
+    }
+  });
+</script>
+
+</body>
+</html>

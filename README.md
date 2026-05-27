@@ -24,6 +24,13 @@
 
 - [仕様書](docs/spec.md)
 - [配布手順](docs/distribution.md)
+- [Cloudflare Pages サイト構築手順](docs/cloudflare-pages-setup.md)
+
+## 配布サイト
+
+`site/` 配下に静的サイト（HTML/CSS のみ、ビルド不要）。Cloudflare Pages にデプロイして
+`.dmg` のダウンロードページとして公開する。詳細は
+[`docs/cloudflare-pages-setup.md`](docs/cloudflare-pages-setup.md)。
 
 ## 配布版のインストール
 

@@ -46,6 +46,9 @@ Tools/AudioTapPoC/output/
 # Plan / scratch
 .plans/
 
+# Distribution site downloads (built .dmg goes here locally, not committed)
+site/downloads/*.dmg
+
 # Distribution artifacts (S6-B)
 dist/
 *.dmg
