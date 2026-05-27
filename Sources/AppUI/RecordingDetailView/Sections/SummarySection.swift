@@ -4,21 +4,38 @@ import Contracts
 extension RecordingDetailView {
     // MARK: - Summary
 
+    /// 要約セクション全体のレイアウト。
+    ///
+    /// 表示状態を以下に整理:
+    /// - `availabilityNotice` (Apple Intelligence 不可)
+    /// - 失敗バナー (`lastError` が summary 由来の場合は赤バナー + 再生成)
+    /// - 生成中 (`isSummarizingSelected`)
+    /// - 生成済 (`SummaryContent` が 5 ブロックに分割表示)
+    /// - 未生成 (`ContentUnavailableView` 的な空状態)
     @ViewBuilder
     var summarySection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .firstTextBaseline) {
-                sectionHeader(title: "要約", systemImage: "doc.text.magnifyingglass")
-                Spacer()
+            SummaryHeader(summary: viewModel.summaryDocument) {
                 regenerateControls
             }
 
             availabilityNotice
+            summaryErrorBanner
 
             if viewModel.isSummarizingSelected && viewModel.summaryDocument == nil {
                 inlineProgress("要約を生成中…")
             } else if let summary = viewModel.summaryDocument {
-                summaryContent(summary)
+                SummaryContent(
+                    summary: summary,
+                    onRegenerate: {
+                        Task { await viewModel.regenerateSummary(hint: nil) }
+                    },
+                    isRegenerating: viewModel.isSummarizingSelected,
+                    canRegenerate: !viewModel.isBusy
+                        && !viewModel.isSummarizingSelected
+                        && !viewModel.segments.isEmpty
+                        && isSummaryAvailable
+                )
             } else if viewModel.segments.isEmpty {
                 emptyBox(
                     title: "要約はまだありません",
@@ -47,6 +64,47 @@ extension RecordingDetailView {
                     .help("Apple Intelligence で要約を生成します")
                 }
             }
+        }
+    }
+
+    /// 直近の `lastError` が要約由来っぽい場合だけ赤バナーを出す。
+    /// 完全な分類は AppViewModel 側に無いため、文字列マッチングで簡易判定する。
+    @ViewBuilder
+    var summaryErrorBanner: some View {
+        if let err = viewModel.lastError,
+           err.contains("要約") || err.localizedCaseInsensitiveContains("summary") {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .foregroundStyle(Theme.Palette.error)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("要約の生成に失敗しました")
+                        .font(.subheadline.weight(.semibold))
+                    Text(err)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    Task { await viewModel.regenerateSummary(hint: nil) }
+                } label: {
+                    Label("再生成", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(viewModel.isBusy || viewModel.isSummarizingSelected || !isSummaryAvailable)
+            }
+            .padding(Theme.Spacing.sm)
+            .background(
+                Theme.Palette.error.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                    .strokeBorder(Theme.Palette.error.opacity(0.4), lineWidth: 0.5)
+            )
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -97,7 +155,7 @@ extension RecordingDetailView {
     var regenerateControls: some View {
         HStack(spacing: Theme.Spacing.sm) {
             if showHintField {
-                TextField("ヒント（任意）", text: $regenerateHint)
+                TextField("ヒント(任意)", text: $regenerateHint)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .frame(width: 200)
@@ -124,7 +182,7 @@ extension RecordingDetailView {
                 viewModel.segments.isEmpty ||
                 !isSummaryAvailable
             )
-            .help(showHintField ? "ヒントを使って要約を再生成します" : "要約を再生成します（任意でヒントを与えられます）")
+            .help(showHintField ? "ヒントを使って要約を再生成します" : "要約を再生成します(任意でヒントを与えられます)")
 
             if showHintField {
                 Button {
@@ -149,92 +207,6 @@ extension RecordingDetailView {
             return true
         case .unavailable:
             return false
-        }
-    }
-
-    @ViewBuilder
-    func summaryContent(_ summary: SummaryDocument) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            summaryBlock(title: "概要") {
-                Text(summary.overview)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            summaryBlock(title: "決定事項") {
-                bulletList(summary.decisions)
-            }
-
-            summaryBlock(title: "アクションアイテム") {
-                if summary.actionItems.isEmpty {
-                    Text("（なし）")
-                        .foregroundStyle(.secondary)
-                        .font(.footnote)
-                } else {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        ForEach(Array(summary.actionItems.enumerated()), id: \.offset) { _, item in
-                            ActionItemRow(item: item)
-                        }
-                    }
-                }
-            }
-
-            summaryBlock(title: "未解決の問い") {
-                bulletList(summary.openQuestions)
-            }
-
-            summaryBlock(title: "レビュー項目") {
-                bulletList(summary.reviewItems)
-            }
-
-            HStack {
-                Spacer()
-                Text("生成: \(summary.generatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-        }
-    }
-
-    @ViewBuilder
-    func summaryBlock<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .textCase(nil)
-                .accessibilityAddTraits(.isHeader)
-            content()
-        }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .subtleSurface()
-    }
-
-    @ViewBuilder
-    func bulletList(_ items: [String]) -> some View {
-        if items.isEmpty {
-            Text("（なし）")
-                .foregroundStyle(.secondary)
-                .font(.footnote)
-        } else {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                        Text("•")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        Text(item)
-                            .font(.body)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
         }
     }
 }
