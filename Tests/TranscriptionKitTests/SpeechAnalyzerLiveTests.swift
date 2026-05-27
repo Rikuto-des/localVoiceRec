@@ -53,6 +53,15 @@ struct SpeechAnalyzerLiveTests {
     @Test("上流 stream の finish が transcribeLive の AsyncThrowingStream finish に伝播する")
     func upstreamFinishPropagates() async throws {
         let svc = SpeechAnalyzerService()
+        // 環境ガード: locale asset が 1 つも入っていない場合は CI で 60s タイムアウトに
+        // 触れやすく、フレークになる。known issue として早期成功扱いにする。
+        let locales = await svc.installedLocales()
+        if locales.isEmpty {
+            withKnownIssue("Skipped: no SpeechAnalyzer locales installed", isIntermittent: true) {
+                Issue.record("Asset not installed — skipping transcribeLive lifecycle check")
+            }
+            return
+        }
         let (stream, fmt) = Self.makeSilenceStream(chunkCount: 5)
         let recordingID = UUID()
 
@@ -104,6 +113,14 @@ struct SpeechAnalyzerLiveTests {
         // を確認するために、受信した全 segment の isFinal をチェックする。
         // 無音入力では segment 0 件で finish するのが期待動作。
         let svc = SpeechAnalyzerService()
+        // 環境ガード (C6): asset 未インストールなら known issue としてスキップ扱い。
+        let locales = await svc.installedLocales()
+        if locales.isEmpty {
+            withKnownIssue("Skipped: no SpeechAnalyzer locales installed", isIntermittent: true) {
+                Issue.record("Asset not installed — skipping live contract check")
+            }
+            return
+        }
         let (stream, fmt) = Self.makeSilenceStream(chunkCount: 3)
         let recordingID = UUID()
 

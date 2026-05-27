@@ -43,6 +43,31 @@ public actor FakeAudioCaptureService: AudioCaptureService {
         liveTranscriptContinuation.yield(segment)
     }
 
+    /// テスト用: 次回の start() が指定エラーを throw する。
+    /// 1 回だけ消費される (使用後 nil に戻る)。
+    private var nextStartError: AudioCaptureError?
+
+    /// テスト用: 次回の start() が指定エラーを throw するよう仕込む。
+    public func failNextStart(error: AudioCaptureError) {
+        nextStartError = error
+    }
+
+    /// テスト用: 現在の録音を `.interrupted(reason:)` 状態に遷移させる。
+    /// 録音中でないときは no-op。
+    public func emitInterruption(reason: InterruptionReason) {
+        let startedAt: Date
+        switch _currentState {
+        case .recording(let t): startedAt = t
+        case .paused(let t, _): startedAt = t
+        case .interrupted:
+            // 冪等
+            return
+        default:
+            return
+        }
+        transition(to: .interrupted(reason: reason, startedAt: startedAt, interruptedAt: Date()))
+    }
+
     public var currentState: CaptureState { _currentState }
 
     public nonisolated var stateUpdates: AsyncStream<CaptureState> { stream }
@@ -66,6 +91,11 @@ public actor FakeAudioCaptureService: AudioCaptureService {
     }
 
     public func start(in outputDirectory: URL, title: String?) async throws -> CaptureSession {
+        if let err = nextStartError {
+            nextStartError = nil
+            transition(to: .failed(error: err))
+            throw err
+        }
         guard session == nil else { throw AudioCaptureError.alreadyRecording }
         let now = Date()
         let id = UUID()
