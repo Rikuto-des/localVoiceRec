@@ -67,8 +67,10 @@ struct SpeechAnalyzerLiveTests {
         // 一定時間で完了することを保証 (= 上流の finish が finalize に伝播)。
         // 環境差で asset 未インストール時は途中で throw する可能性があるため、
         // throw も成功条件に含める (= 「stream が無限にブロックしない」ことだけ確認)。
+        // 60s: asset 初回ダウンロード + analyzer 初期化が CI でフレークになりにくい余裕値。
+        // (実測 ~31s。30s だと境界でランダム fail する)
         let timeoutTask = Task<Bool, Never> {
-            try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
+            try? await Task.sleep(nanoseconds: 60_000_000_000) // 60s
             return false
         }
         let finishTask = Task<Bool, Never> {

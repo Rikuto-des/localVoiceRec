@@ -26,6 +26,10 @@ public struct MainScene: Scene {
         // ViewModel が永続的に audioLevels を購読開始。
         // メニューバーポップアップが閉じても更新が止まらないため。
         vm.startObservingAudioLevels()
+        // 同様に live transcripts も永続的に購読 (P4.5)。
+        // ポップアップを閉じても録音は継続するので、UI を再オープンした時に
+        // 過去 N 件が即座に見えるようにしておく。
+        vm.startObservingLiveTranscripts()
         _viewModel = State(initialValue: vm)
     }
 

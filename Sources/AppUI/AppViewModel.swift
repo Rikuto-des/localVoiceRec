@@ -71,8 +71,14 @@ public final class AppViewModel {
     /// `startObservingLiveTranscripts()` で開始した監視タスク (P4.2)。
     private var liveTranscriptsTask: Task<Void, Never>?
     /// 録音中に live ASR から届いた isFinal セグメント。録音 ID 単位で蓄積。
-    /// UI 表示用フックはまだ未実装 (P4.5 以降で扱う想定)。
+    /// 録音停止後しばらく保持 (Final 文字起こしに差し替わるまでのチラつき防止) してからクリアする。
     public private(set) var liveTranscriptSegments: [TranscriptSegment] = []
+    /// 録音停止後にバッファを保持しておくグレース時間 (秒)。
+    /// この間は live → final の差し替えで UI が空にならないようにする。
+    private let liveTranscriptGracePeriodSec: Double = 1.5
+    /// `clearLiveTranscriptsAfterDelay()` でスケジュール中の Task。
+    /// 直前の停止のクリアが完了する前に次の録音が始まったらキャンセルする。
+    private var liveTranscriptsClearTask: Task<Void, Never>?
     /// 進行中の自動パイプライン (録音 ID → Task)
     private var pipelineTasks: [UUID: Task<Void, Never>] = [:]
     /// `select` 経由で 1 回だけ自動 transcribe を試行済みの録音 ID。
@@ -198,6 +204,10 @@ public final class AppViewModel {
                 await refreshDiagnostics()
                 return
             }
+            // 前回録音の live バッファ持ち越しを防ぐ
+            liveTranscriptsClearTask?.cancel()
+            liveTranscriptsClearTask = nil
+            liveTranscriptSegments = []
             let id = UUID()
             let dir = try AppPaths.recordingDirectory(for: id)
             _ = try await capture.start(in: dir, title: nil)
@@ -217,11 +227,38 @@ public final class AppViewModel {
             try await repository.create(recording)
             lastError = nil
             await refreshList()
+            // live バッファは live → final の差し替えで一瞬空にならないように
+            // 数秒のグレースを設けてからクリア。再度 startRecording されたら即キャンセル。
+            scheduleLiveTranscriptClear()
             // 自動で文字起こし → 要約のパイプラインを開始（fire-and-forget）
             runAutoPipeline(for: recording)
         } catch {
             lastError = "録音停止に失敗しました: \(String(describing: error))"
         }
+    }
+
+    /// `liveTranscriptSegments` を一定時間後にクリアする。
+    /// 録音停止 → final 文字起こし表示までの間、UI が空にならないよう保持する用。
+    /// テストでオーバライドできるよう public-internal にしておく。
+    private func scheduleLiveTranscriptClear() {
+        liveTranscriptsClearTask?.cancel()
+        let delaySec = liveTranscriptGracePeriodSec
+        liveTranscriptsClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySec * 1_000_000_000))
+            guard let self else { return }
+            if Task.isCancelled { return }
+            // 既に新しい録音が始まっていたらクリアしない (startRecording 側でキャンセル済みの想定だが二重防止)
+            if case .recording = self.captureState { return }
+            self.liveTranscriptSegments = []
+        }
+    }
+
+    /// テスト用: live transcripts バッファを直接クリアする。
+    /// 本番コードからは呼ばない。`internal` で `@testable import` 越しに使う想定。
+    func _clearLiveTranscriptsForTesting() {
+        liveTranscriptsClearTask?.cancel()
+        liveTranscriptsClearTask = nil
+        liveTranscriptSegments = []
     }
 
     /// 録音停止後（および select で空 segments のとき）に呼ばれる、

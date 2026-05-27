@@ -19,7 +19,6 @@ struct LocalVoiceRecApp: App {
 
     init() {
         // ─── S3 統合: 実装サービスへ配線 ───
-        let capture = AudioCaptureModule.makeService()
         let repository: any RecordingRepository
         do {
             repository = try DataStoreModule.makeRepository()
@@ -32,6 +31,9 @@ struct LocalVoiceRecApp: App {
             repository = UnavailableRecordingRepository()
         }
         let transcription = TranscriptionKitModule.makeService()
+        // P4.5: AudioCapture に transcription を渡して live ASR を有効化。
+        // 録音中の PCM を fan-out して投機的に文字起こし → MenuBar / DetailView に逐次表示。
+        let capture = AudioCaptureModule.makeService(transcription: transcription)
         let summary = SummaryKitModule.makeService()
 
         self.capture = capture

@@ -148,6 +148,70 @@ struct AppViewModelTests {
         #expect(vm.selectedRecording == nil)
     }
 
+    @Test("live transcripts が AsyncStream で来たときバッファに追加され、stop で消える (P4.5)")
+    func liveTranscriptsAccumulateAndClearOnStop() async throws {
+        let (vm, capture, _) = makeViewModel()
+
+        // 観測タスク起動
+        vm.startObservingLiveTranscripts()
+
+        // 録音開始
+        await vm.startRecording()
+
+        // 2 件の live セグメントを emit
+        let recordingID = UUID()
+        let seg1 = TranscriptSegment(
+            recordingID: recordingID, source: .mic,
+            startSec: 0.0, endSec: 1.0,
+            text: "hello", isFinal: true
+        )
+        let seg2 = TranscriptSegment(
+            recordingID: recordingID, source: .system,
+            startSec: 1.0, endSec: 2.0,
+            text: "world", isFinal: true
+        )
+        capture.emitLiveTranscript(seg1)
+        capture.emitLiveTranscript(seg2)
+
+        // 観測 Task が回るのを少し待つ
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+        #expect(vm.liveTranscriptSegments.count == 2)
+        #expect(vm.liveTranscriptSegments.contains(where: { $0.text == "hello" }))
+        #expect(vm.liveTranscriptSegments.contains(where: { $0.text == "world" }))
+
+        // 停止 → grace period 後に clear される
+        await vm.stopRecording()
+        // 停止直後はまだ保持されている (grace 1.5s)
+        #expect(!vm.liveTranscriptSegments.isEmpty)
+
+        // テスト用に強制クリア API を呼ぶ (1.5s 待つのはテストとして遅すぎる)
+        vm._clearLiveTranscriptsForTesting()
+        #expect(vm.liveTranscriptSegments.isEmpty)
+    }
+
+    @Test("再度 startRecording で前回の live バッファはクリアされる (P4.5)")
+    func liveTranscriptsClearedOnNewRecording() async throws {
+        let (vm, capture, _) = makeViewModel()
+        vm.startObservingLiveTranscripts()
+
+        await vm.startRecording()
+        capture.emitLiveTranscript(
+            TranscriptSegment(
+                recordingID: UUID(), source: .mic,
+                startSec: 0, endSec: 1, text: "old", isFinal: true
+            )
+        )
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(!vm.liveTranscriptSegments.isEmpty)
+
+        await vm.stopRecording()
+        await vm.startRecording()
+
+        // 新規録音の開始でクリアされている
+        #expect(vm.liveTranscriptSegments.isEmpty)
+    }
+
     @Test("summary が unavailable のときは regenerate でエラーが入る")
     func regenerateSummaryWhenUnavailable() async throws {
         let recording = SampleData.recording

@@ -8,6 +8,7 @@ public actor FakeAudioCaptureService: AudioCaptureService {
     private nonisolated let stream: AsyncStream<CaptureState>
     private let levelContinuation: AsyncStream<AudioLevelSnapshot>.Continuation
     private nonisolated let levelStream: AsyncStream<AudioLevelSnapshot>
+    private let liveTranscriptContinuation: AsyncStream<TranscriptSegment>.Continuation
     private nonisolated let liveTranscriptStream: AsyncStream<TranscriptSegment>
     private var startedAt: Date?
     private var session: CaptureSession?
@@ -29,8 +30,17 @@ public actor FakeAudioCaptureService: AudioCaptureService {
         ) { capturedLevels = $0 }
         self.levelContinuation = capturedLevels
 
-        // 空の live transcript stream (Fake は live ASR 未対応)。
-        self.liveTranscriptStream = AsyncStream<TranscriptSegment> { _ in /* never yield */ }
+        // テスト/Preview で live transcripts を任意 yield するために continuation を保持する。
+        var capturedLive: AsyncStream<TranscriptSegment>.Continuation!
+        self.liveTranscriptStream = AsyncStream<TranscriptSegment>(
+            bufferingPolicy: .unbounded
+        ) { capturedLive = $0 }
+        self.liveTranscriptContinuation = capturedLive
+    }
+
+    /// テスト/Preview 用: live transcript セグメントを手動で yield する。
+    public nonisolated func emitLiveTranscript(_ segment: TranscriptSegment) {
+        liveTranscriptContinuation.yield(segment)
     }
 
     public var currentState: CaptureState { _currentState }
