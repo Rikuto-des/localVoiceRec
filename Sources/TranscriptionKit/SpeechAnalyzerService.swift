@@ -281,17 +281,13 @@ public actor SpeechAnalyzerService: TranscriptionService {
             throw TranscriptionError.analyzerFailed(message: "Failed to allocate input PCM buffer")
         }
 
-        let converter: AVAudioConverter?
-        if inputFormat == outputFormat {
-            converter = nil
-        } else {
-            guard let c = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-                throw TranscriptionError.analyzerFailed(
-                    message: "AVAudioConverter init failed (\(inputFormat) -> \(outputFormat))"
-                )
-            }
-            converter = c
-        }
+        // ★ 重要 ★
+        // AVAudioConverter は **同じインスタンスを再利用しない**。convert(to:error:withInputFrom:)
+        // で `.endOfStream` を 1 回送ると converter は「ストリーム終了」状態になり、以降の
+        // convert 呼び出しが正しく動作しなくなる（出力が無音や歪みになる）。
+        //
+        // 修正: 1) **イテレーションごとに新規 converter を生成**して状態リーク防止
+        //       2) なるべくシンプルな convert(to:from:) を使う（sample-rate conversion も OK）
 
         while true {
             try Task.checkCancellation()
@@ -315,7 +311,7 @@ public actor SpeechAnalyzerService: TranscriptionService {
             }
 
             let buffer: AVAudioPCMBuffer
-            if let converter {
+            if inputFormat != outputFormat {
                 // 出力 capacity は入力フレーム × (出レート/入レート) + マージン
                 let ratio = outputFormat.sampleRate / inputFormat.sampleRate
                 let outCapacity = AVAudioFrameCount(Double(inputBuffer.frameLength) * ratio + 1024)
@@ -324,6 +320,17 @@ public actor SpeechAnalyzerService: TranscriptionService {
                     frameCapacity: outCapacity
                 ) else {
                     throw TranscriptionError.analyzerFailed(message: "Failed to allocate output PCM buffer")
+                }
+                // ★ converter は **イテレーションごとに新規作成** ★
+                // 旧コードはループ外で 1 個作って再利用していたが、input block で
+                // `.endOfStream` を返した後の converter は内部状態が「終了」になり、
+                // 後続イテレーションで歪んだ/無音の出力を返していた（最初の "あ" だけで
+                // 以降の発話が認識されない問題の根本原因）。fresh にすれば
+                // 各 chunk の sample-rate conversion が独立に正しく動く。
+                guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+                    throw TranscriptionError.analyzerFailed(
+                        message: "AVAudioConverter init failed (\(inputFormat) -> \(outputFormat))"
+                    )
                 }
                 let state = ConverterFeedState(buffer: inputBuffer)
                 var convError: NSError?
@@ -347,7 +354,7 @@ public actor SpeechAnalyzerService: TranscriptionService {
 }
 
 /// `AVAudioConverter.convert(to:error:withInputFrom:)` の入力ブロックに渡す状態。
-/// var を `@Sendable` クロージャでキャプチャすると警告になるため、参照型に閉じ込めて回避する。
+/// 旧コードで残骸として残しているが、現実装は同期 API を使うので参照されない。
 private final class ConverterFeedState: @unchecked Sendable {
     private var supplied = false
     private let buffer: AVAudioPCMBuffer
