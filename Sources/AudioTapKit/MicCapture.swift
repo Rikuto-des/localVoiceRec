@@ -1,6 +1,7 @@
 import Foundation
 import AVFAudio
 import AVFoundation
+import Contracts
 import os.log
 
 /// `AVAudioEngine.inputNode` 経由でマイク音声を取得する。
@@ -21,7 +22,7 @@ import os.log
 ///   ASR 上は許容範囲。
 public final class MicCapture: @unchecked Sendable {
 
-    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio.mic")
+    private static let logger = Logger(subsystem: AppIdentifiers.logSubsystem, category: "audio.mic")
 
     public enum State {
         case idle

@@ -13,7 +13,7 @@ import os.log
 /// on-device モデルは共有される（Apple 公式仕様）。
 public actor SpeechAnalyzerService: TranscriptionService {
 
-    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "transcription")
+    private static let logger = Logger(subsystem: AppIdentifiers.logSubsystem, category: "transcription")
 
     // MARK: - Time sanitization
 

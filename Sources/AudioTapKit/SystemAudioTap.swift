@@ -2,6 +2,7 @@ import Foundation
 import CoreAudio
 import AudioToolbox
 import AVFAudio
+import Contracts
 import Synchronization
 import os.log
 
@@ -41,7 +42,7 @@ import os.log
 public final class SystemAudioTap: @unchecked Sendable {
 
     // MARK: - Logger
-    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio")
+    private static let logger = Logger(subsystem: AppIdentifiers.logSubsystem, category: "audio")
 
     // MARK: - Public
 

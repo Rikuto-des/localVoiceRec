@@ -36,7 +36,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     // MARK: - Logger
 
-    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio")
+    private static let logger = Logger(subsystem: AppIdentifiers.logSubsystem, category: "audio")
 
     // MARK: - State stream
 
@@ -785,7 +785,7 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 /// UserDefaults をリセットする他ない (UI からの reset は今回は提供しない)。
 enum SystemAudioCaptureFlag {
     /// UserDefaults キー。namespace 衝突を避けるため逆ドメイン記法。
-    static let key = "com.example.localVoiceRec.systemAudio.everCaptured"
+    static let key = AppIdentifiers.userDefaultsKey("systemAudio.everCaptured")
 
     /// テスト用に override 可能な store。本番ビルドでは `.standard` で固定し、
     /// `#if DEBUG` 時のみ書き換え可能 (= テストハーネスからの差し替え専用)。
@@ -838,7 +838,7 @@ private struct ActiveSession {
 /// `LevelAccumulator` への投入は **pause 中も行う** (UI のレベルメーターは録音中も
 /// pause 中も「実音」を見せたい想定。ファイル書き込みのみ止める)。
 final class WriterSink: @unchecked Sendable {
-    private static let logger = Logger(subsystem: "com.example.localVoiceRec", category: "audio.write")
+    private static let logger = Logger(subsystem: AppIdentifiers.logSubsystem, category: "audio.write")
     private let lock = NSLock()
     private var writer: WAVFileWriter?
     private var paused: Bool = false

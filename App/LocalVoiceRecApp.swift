@@ -26,7 +26,7 @@ struct LocalVoiceRecApp: App {
             // Repository の初期化失敗は致命的。書き込み不可な専用 repository に逃がし、
             // UI 上で「録音不可 / ストア利用不可」を確認可能な状態にする。
             // 旧実装の InMemoryRecordingRepository フォールバックは本番バイナリに
-            // Mock コードを残してしまうため、AppUI 内の UnavailableRecordingRepository に差し替え。
+            // Mock コードを残してしまうため、DataStore 内の UnavailableRecordingRepository に差し替え。
             assertionFailure("DataStoreModule.makeRepository failed: \(error)")
             repository = UnavailableRecordingRepository()
         }

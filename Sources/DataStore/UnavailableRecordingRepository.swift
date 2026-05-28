@@ -5,7 +5,7 @@ import Contracts
 ///
 /// 旧実装では `InMemoryRecordingRepository` をフォールバックにしていたが、
 /// 本番バイナリにテスト用 Mock が漏れる/ストア失敗をユーザが気付けない という問題が
-/// あったため、専用の "録音不可" repository を AppUI に置く。
+/// あったため、専用の "録音不可" repository を永続化レイヤ (DataStore) 側に置く。
 ///
 /// セマンティクス:
 /// - 読み取り系 (list / get / search / load*) は空の結果を返す

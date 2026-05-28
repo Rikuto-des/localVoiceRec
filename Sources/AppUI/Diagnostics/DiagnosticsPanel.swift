@@ -433,7 +433,7 @@ struct DiagnosticsPanel: View {
                 // 直近 5 分のエントリを取得。`position(date:)` は内部で適切な offset を選ぶ。
                 let fiveMinAgo = Date().addingTimeInterval(-300)
                 let position = store.position(date: fiveMinAgo)
-                let predicate = NSPredicate(format: "subsystem == %@", "com.example.localVoiceRec")
+                let predicate = NSPredicate(format: "subsystem == %@", AppIdentifiers.logSubsystem)
                 let entries = try store.getEntries(at: position, matching: predicate)
 
                 var lines: [String] = []
@@ -464,7 +464,7 @@ struct DiagnosticsPanel: View {
                     totalBytes += byteEstimate
                 }
                 if lines.isEmpty {
-                    lines.append("(no log entries in last 5 minutes for subsystem com.example.localVoiceRec)")
+                    lines.append("(no log entries in last 5 minutes for subsystem \(AppIdentifiers.logSubsystem))")
                 }
                 return .success(lines.joined(separator: "\n"))
             } catch {
