@@ -1,6 +1,5 @@
 import SwiftUI
 import Contracts
-import OSLog
 #if DEBUG
 import ContractsTestSupport
 #endif
@@ -10,10 +9,11 @@ import ContractsTestSupport
 /// 「録音されていなさそう / 文字起こしが出ない」というユーザー訴えに対し、
 /// 原因切り分けに必要な情報をまとめて表示する:
 ///
-/// - マイク / システム音声の権限状態
-/// - インストール済み Speech locale
-/// - Foundation Models 要約サービスの availability
-/// - 選択中の録音のファイル URL / 静的波形（任意）
+/// - マイク / システム音声の権限状態 (`PermissionsSection`)
+/// - インストール済み Speech locale / 要約 availability (`SummaryAvailabilitySection`)
+/// - SystemAudioTap IOProc カウンタ (`SystemFlowSection`)
+/// - 選択中の録音のファイル URL
+/// - 直近 5 分の os.log エントリをクリップボードへ (`LogCopySection` + `DiagnosticsLogCollector`)
 ///
 /// ## HIG 準拠ポイント
 /// - セクション名は `caption.bold()` + `.secondary` (Form の section title 風)
@@ -23,20 +23,6 @@ struct DiagnosticsPanel: View {
     @Bindable var viewModel: AppViewModel
     @State private var isExpanded: Bool = false
     @State private var isRefreshing: Bool = false
-    /// 「診断ログをコピー」ボタンの状態。
-    @State private var copyState: CopyState = .idle
-    @State private var copyAlert: CopyAlert?
-
-    private enum CopyState: Equatable {
-        case idle
-        case copying
-        case success
-    }
-
-    private struct CopyAlert: Identifiable {
-        let id = UUID()
-        let message: String
-    }
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -63,87 +49,27 @@ struct DiagnosticsPanel: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            section(title: "権限") {
-                row(
-                    label: "マイク",
-                    value: stateLabel(viewModel.diagnostics.micAuthorization),
-                    isWarning: viewModel.diagnostics.micAuthorization != .authorized
-                )
-                row(
-                    label: "システム音声",
-                    value: stateLabel(viewModel.diagnostics.systemAudioAuthorization),
-                    isWarning: viewModel.diagnostics.systemAudioAuthorization != .authorized
-                )
-                if viewModel.diagnostics.systemAudioAuthorization == .notDetermined {
-                    Text("システム音声は事前確認 API が無いため、初回録音で実音が取れた時点で「許可済み」になります。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // 未要求のときは権限プロンプトを出すボタンを表示
-                if viewModel.diagnostics.micAuthorization == .notDetermined ||
-                   viewModel.diagnostics.systemAudioAuthorization == .notDetermined {
-                    permissionHelpBox
-                }
-                // 拒否済みのときは設定アプリへの誘導
-                if viewModel.diagnostics.micAuthorization == .denied ||
-                   viewModel.diagnostics.systemAudioAuthorization == .denied {
-                    deniedHelpBox
-                }
-            }
+            PermissionsSection(viewModel: viewModel)
 
             Divider()
 
-            section(title: "文字起こし") {
-                if viewModel.diagnostics.installedLocales.isEmpty {
-                    row(label: "Locale", value: "未インストール", isWarning: true)
-                } else {
-                    row(
-                        label: "Locale",
-                        value: viewModel.diagnostics.installedLocales.joined(separator: ", "),
-                        isWarning: false
-                    )
-                }
-            }
-
-            Divider()
-
-            section(title: "要約") {
-                row(
-                    label: "ステータス",
-                    value: availabilityLabel(viewModel.diagnostics.summaryAvailability),
-                    isWarning: !isSummaryAvailable
-                )
-            }
+            SummaryAvailabilitySection(viewModel: viewModel)
 
             if let flow = viewModel.diagnostics.systemFlow {
                 Divider()
-                systemFlowSection(flow)
+                SystemFlowSection(flow: flow)
             }
 
             if let recording = viewModel.selectedRecording {
                 Divider()
-                section(title: "選択中の録音ファイル") {
+                DiagnosticsSectionStyles.section(title: "選択中の録音ファイル") {
                     filePathRow(label: "mic", url: recording.micAudioURL)
                     filePathRow(label: "system", url: recording.systemAudioURL)
                 }
             }
 
             HStack {
-                Button {
-                    Task { await copyDiagnosticsLog() }
-                } label: {
-                    if copyState == .success {
-                        Label("✓ コピーしました", systemImage: "checkmark.circle.fill")
-                    } else {
-                        Label("診断ログをコピー", systemImage: "doc.on.clipboard")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(copyState == .copying)
-                .help("直近 5 分の os.log エントリをクリップボードへ")
+                LogCopySection()
                 Spacer()
                 Button {
                     Task { await refresh() }
@@ -157,86 +83,9 @@ struct DiagnosticsPanel: View {
             }
             .padding(.top, Theme.Spacing.xs)
         }
-        .alert(item: $copyAlert) { alert in
-            Alert(title: Text("診断ログのコピー"), message: Text(alert.message), dismissButton: .default(Text("OK")))
-        }
     }
 
-    // MARK: - System Flow
-
-    /// C2: SystemAudioTap IOProc カウンタを表示するセクション。
-    /// `callCount > 0 && nonZeroBufferCount == 0` のとき、TCC silent denial を疑う赤バナーを出す。
-    @ViewBuilder
-    private func systemFlowSection(_ flow: SystemFlowSnapshot) -> some View {
-        let suspiciousSilentDenial = flow.callCount > 0 && flow.nonZeroBufferCount == 0
-        section(title: "システム音声 flow") {
-            // X4.8: 技術用語の日本語ラベル化。元の用語は .help() のツールチップに退避し、
-            // エンジニアのデバッグ時には hover で復元できる。
-            row(label: "システム音声の信号検出", value: "\(flow.callCount)",
-                isWarning: false, help: "IOProc 呼び出し回数")
-            row(label: "受信データ量", value: "\(flow.bytesReceived)",
-                isWarning: flow.callCount > 0 && flow.bytesReceived == 0, help: "受信バイト (bytesReceived)")
-            row(label: "実音検出回数", value: "\(flow.nonZeroBufferCount)",
-                isWarning: suspiciousSilentDenial, help: "非ゼロバッファ (nonZeroBufferCount)")
-            row(label: "破棄バッファ数", value: "\(flow.droppedPushCount)",
-                isWarning: flow.droppedPushCount > 0, help: "ドロップ (droppedPushCount)")
-            if suspiciousSilentDenial {
-                Label {
-                    Text("システム音声の信号検出は発生していますが、実音データがゼロです。画面収録権限を確認してください。")
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "exclamationmark.octagon.fill")
-                        .foregroundStyle(.red)
-                }
-                .font(.caption)
-                .padding(Theme.Spacing.sm)
-                .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-            }
-        }
-    }
-
-    // MARK: - Sections
-
-    @ViewBuilder
-    private func section<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.bold)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .accessibilityAddTraits(.isHeader)
-            content()
-        }
-    }
-
-    private func row(label: String, value: String, isWarning: Bool, help: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Spacer()
-            HStack(spacing: Theme.Spacing.xs) {
-                if isWarning {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Theme.Palette.warning)
-                        .font(.caption)
-                        .accessibilityHidden(true)
-                }
-                Text(value)
-                    .font(.footnote.monospacedDigit())
-                    .foregroundStyle(isWarning ? Theme.Palette.warning : .primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
-            }
-        }
-        .help(help ?? "")
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)\(isWarning ? "（要確認）" : "")")
-    }
+    // MARK: - File path row (selected recording)
 
     private func filePathRow(label: String, url: URL) -> some View {
         let path = url.path
@@ -270,135 +119,6 @@ struct DiagnosticsPanel: View {
         }
     }
 
-    // MARK: - Permission help boxes
-
-    @ViewBuilder
-    private var permissionHelpBox: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("OS にまだ権限を問い合わせていません。下のボタンを押すと、マイクとシステム音声録音の権限ダイアログが表示されます。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Spacer()
-                Button {
-                    Task { await viewModel.requestAudioPermissions() }
-                } label: {
-                    Label("権限を要求", systemImage: "checkmark.shield")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .help("マイクとシステム音声の権限を OS に問い合わせます")
-            }
-        }
-        .padding(.top, Theme.Spacing.xs)
-    }
-
-    @ViewBuilder
-    private var deniedHelpBox: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Label {
-                // A7: 拒否されている対象に応じてどこを開けばよいかを明示
-                Text(deniedHelpMessage)
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "lock.shield.fill")
-                    .foregroundStyle(Theme.Palette.warning)
-            }
-            .font(.caption)
-            .foregroundStyle(.primary)
-            HStack {
-                Spacer()
-                Button {
-                    openSystemSettings()
-                } label: {
-                    Label(openSettingsButtonLabel, systemImage: "gearshape")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("該当のプライバシー設定ペインを開きます")
-            }
-        }
-        .padding(.top, Theme.Spacing.xs)
-    }
-
-    /// A7: 拒否対象に応じたガイド文。
-    /// X4.11: `deniedHelpBox` は少なくとも片方が denied のときだけ表示されるため、
-    /// (false, false) 分岐は到達不能 — 削除した。
-    private var deniedHelpMessage: String {
-        let micDenied = viewModel.diagnostics.micAuthorization == .denied
-        let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
-        if micDenied && systemDenied {
-            return "マイクと画面収録の両方が拒否されています。システム設定でそれぞれ localVoiceRec を有効にしてください。まずマイクの設定を開きます。"
-        } else if micDenied {
-            return "マイクの権限が拒否されています。システム設定 → プライバシーとセキュリティ → マイク で localVoiceRec を許可してください。"
-        } else {
-            // systemDenied — `deniedHelpBox` の出現条件より、ここでは必ず true。
-            return "システム音声 (画面とシステムオーディオの収録) が拒否されています。システム設定で localVoiceRec を許可してください。"
-        }
-    }
-
-    private var openSettingsButtonLabel: String {
-        let micDenied = viewModel.diagnostics.micAuthorization == .denied
-        let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
-        if !micDenied && systemDenied {
-            return "画面収録設定を開く"
-        }
-        return "マイク設定を開く"
-    }
-
-    /// A7: 拒否されているパーミッションごとに開くべき設定ペインを変える。
-    /// 旧実装は常にマイクのみへ飛ばしていたため、画面収録 (システム音声) を拒否した
-    /// ユーザーが「マイクしか出てこない」と混乱していた問題への対策。
-    private func openSystemSettings() {
-        let micDenied = viewModel.diagnostics.micAuthorization == .denied
-        let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
-
-        // 両方拒否ならマイクを優先（必要なら次のステップでシステム音声側を開く運用）。
-        // どちらでもなければ既存通りマイクへ。
-        let targetURLString: String
-        if micDenied {
-            targetURLString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-        } else if systemDenied {
-            targetURLString = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        } else {
-            targetURLString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-        }
-        if let url = URL(string: targetURLString) {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    // MARK: - Formatting
-
-    private func stateLabel(_ state: AudioAuthorizationStatus.State) -> String {
-        switch state {
-        case .authorized: return "許可済み"
-        case .denied: return "拒否"
-        case .notDetermined: return "未要求"
-        }
-    }
-
-    private func availabilityLabel(_ avail: SummaryAvailability) -> String {
-        switch avail {
-        case .available: return "利用可能"
-        case .unavailable(let reason):
-            switch reason {
-            case .deviceNotEligible: return "端末非対応"
-            case .appleIntelligenceNotEnabled: return "Apple Intelligence が無効"
-            case .modelNotReady: return "モデル準備中"
-            case .unsupportedOS: return "OS 非対応"
-            }
-        }
-    }
-
-    private var isSummaryAvailable: Bool {
-        if case .available = viewModel.diagnostics.summaryAvailability {
-            return true
-        }
-        return false
-    }
-
     // MARK: - Actions
 
     private func refresh() async {
@@ -411,80 +131,6 @@ struct DiagnosticsPanel: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-    }
-
-    /// C4: 直近 5 分の os.log エントリを `subsystem == com.example.localVoiceRec` で取得し、
-    /// テキスト化してクリップボードへコピーする。
-    ///
-    /// ## OSLogStore の制約
-    /// - macOS 12+ が必要。
-    /// - 非サンドボックスのアプリは `.local` ストアを開ける。サンドボックス下では
-    ///   `OSLogEntryLog.subsystem` フィルタが効くが、他プロセスのログにはアクセス不可。
-    /// - 取得は同期的でログ件数によっては時間がかかるため、`Task.detached` でオフメイン実行。
-    /// - 件数 / バイト数の上限を設けてアプリが固まらないようにする (max 500 件 or 100KB)。
-    private func copyDiagnosticsLog() async {
-        copyState = .copying
-        defer {
-            if copyState == .copying { copyState = .idle }
-        }
-        let result: Result<String, Error> = await Task.detached(priority: .userInitiated) {
-            do {
-                let store = try OSLogStore.local()
-                // 直近 5 分のエントリを取得。`position(date:)` は内部で適切な offset を選ぶ。
-                let fiveMinAgo = Date().addingTimeInterval(-300)
-                let position = store.position(date: fiveMinAgo)
-                let predicate = NSPredicate(format: "subsystem == %@", AppIdentifiers.logSubsystem)
-                let entries = try store.getEntries(at: position, matching: predicate)
-
-                var lines: [String] = []
-                var totalBytes = 0
-                let maxEntries = 500
-                let maxBytes = 100_000
-                // X3.8: 都度生成せず、共有 static フォーマッタを参照
-                let dateFmt = AppFormatters.iso8601Fractional
-
-                for case let entry as OSLogEntryLog in entries {
-                    let level: String
-                    switch entry.level {
-                    case .debug: level = "debug"
-                    case .info: level = "info"
-                    case .notice: level = "notice"
-                    case .error: level = "error"
-                    case .fault: level = "fault"
-                    case .undefined: level = "undefined"
-                    @unknown default: level = "?"
-                    }
-                    let line = "[\(dateFmt.string(from: entry.date))] [\(level)] [\(entry.category)] \(entry.composedMessage)"
-                    let byteEstimate = line.utf8.count + 1
-                    if lines.count >= maxEntries || totalBytes + byteEstimate > maxBytes {
-                        lines.append("--- truncated (limit reached) ---")
-                        break
-                    }
-                    lines.append(line)
-                    totalBytes += byteEstimate
-                }
-                if lines.isEmpty {
-                    lines.append("(no log entries in last 5 minutes for subsystem \(AppIdentifiers.logSubsystem))")
-                }
-                return .success(lines.joined(separator: "\n"))
-            } catch {
-                return .failure(error)
-            }
-        }.value
-
-        switch result {
-        case .success(let text):
-            copyToClipboard(text)
-            copyState = .success
-            // 1.6 秒後に idle に戻す
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_600_000_000)
-                if copyState == .success { copyState = .idle }
-            }
-        case .failure(let error):
-            copyState = .idle
-            copyAlert = CopyAlert(message: "ログ取得に失敗しました: \(error.localizedDescription)")
-        }
     }
 }
 
