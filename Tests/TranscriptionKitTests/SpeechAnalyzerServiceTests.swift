@@ -57,13 +57,6 @@ struct SpeechAnalyzerServiceTests {
         }
     }
 
-    @Test("cancelAll はノーオペでも安全に呼べる")
-    func cancelAllNoop() async {
-        let svc = SpeechAnalyzerService()
-        await svc.cancelAll()
-        await svc.cancelAll()  // 2 回呼んでも安全
-    }
-
     @Test("ファクトリは TranscriptionService 型を返す")
     func factoryReturnsService() {
         let svc: any TranscriptionService = TranscriptionKitModule.makeService()

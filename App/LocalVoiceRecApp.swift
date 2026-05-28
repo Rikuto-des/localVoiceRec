@@ -31,8 +31,6 @@ struct LocalVoiceRecApp: App {
             repository = UnavailableRecordingRepository()
         }
         let transcription = TranscriptionKitModule.makeService()
-        // Live ASR (録音中ストリーミング文字起こし) は UI から撤去済み。
-        // `transcribeLive` API 自体は将来のために残してあるが、AudioCaptureService からは発火しない。
         let capture = AudioCaptureModule.makeService()
         let summary = SummaryKitModule.makeService()
 

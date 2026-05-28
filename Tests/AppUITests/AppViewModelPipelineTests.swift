@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-@preconcurrency import AVFoundation
 @testable import AppUI
 import Contracts
 import ContractsTestSupport
@@ -105,15 +104,4 @@ private actor SlowFakeTranscription: TranscriptionService {
         }
     }
 
-    nonisolated func transcribeLive(
-        buffers: AsyncStream<AVAudioPCMBuffer>,
-        inputFormat: AVAudioFormat,
-        recordingID: UUID,
-        source: TranscriptSegment.Source,
-        locale: Locale?
-    ) -> AsyncThrowingStream<TranscriptSegment, Error> {
-        AsyncThrowingStream { cont in cont.finish() }
-    }
-
-    func cancelAll() async {}
 }

@@ -28,33 +28,6 @@ public protocol TranscriptionService: Sendable {
         recording: Recording,
         locale: Locale?
     ) -> AsyncThrowingStream<TranscriptSegment, Error>
-
-    /// 進行中のすべての文字起こしを中断。
-    func cancelAll() async
-
-    /// 録音中に PCM バッファを直接流し込み、isFinal 確定を逐次返す live transcription。
-    ///
-    /// `AudioCaptureServiceImpl` の fan-out から呼ばれることを想定 (P4.2)。
-    /// 既存のファイルベース `transcribe(recording:locale:)` と並走しても backing
-    /// engine は共有される（同一 locale / preset）。
-    ///
-    /// 上流 `buffers` AsyncStream が finish したら内部の inputBuilder を finish し、
-    /// `finalizeAndFinish` 相当を呼んで残りの isFinal を確定する。
-    ///
-    /// 既定では `isFinal == true` のセグメントのみ yield する（partial を含めない）。
-    ///
-    /// - Parameters:
-    ///   - buffers: 録音中の PCM バッファストリーム。上流 finish が ASR 終了のトリガ。
-    ///   - inputFormat: `buffers` の PCM フォーマット (sample rate / channel count)。
-    ///   - source: `TranscriptSegment.source` に立てる値（mic / system）。
-    ///   - locale: 言語。nil ならシステムデフォルト。
-    func transcribeLive(
-        buffers: AsyncStream<AVAudioPCMBuffer>,
-        inputFormat: AVAudioFormat,
-        recordingID: UUID,
-        source: TranscriptSegment.Source,
-        locale: Locale?
-    ) -> AsyncThrowingStream<TranscriptSegment, Error>
 }
 
 public enum TranscriptionError: Error, Sendable, Hashable {

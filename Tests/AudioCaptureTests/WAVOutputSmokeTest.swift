@@ -5,27 +5,20 @@ import ContractsTestSupport
 import AudioTapKit
 @testable import AudioCapture
 
-/// ALAC → WAV 撤回 (e01d393) の回帰防止テスト。
+/// 出力ファイル拡張子が `.wav` であることを複数経路で確認する。
 ///
 /// 観点:
-/// - 出力ファイル拡張子が `.wav` であることを **複数経路** で確認する。
 ///   1. `WAVFileWriter.Format.wav.fileExtension == "wav"` (基底契約)
 ///   2. ハードウェア不要な軽量経路として `FakeAudioCaptureService.start()` の戻り値が
 ///      `.wav` 拡張子を持つこと
 ///   3. (実機)`AudioCaptureServiceImpl` は `start()` でハードウェアを掴むため、
 ///      CI で実行できない部分はソース上の `.wav` 採用を間接的に守る。
-///
-/// 背景: Voice Processing + ALAC の互換性問題 (`dta?` エラー) により WAV を採用。
-/// 誤って `.alac` 既定に戻すと録音ファイルが壊れるため、回帰テストで防御する。
-@Suite("WAV output convention — revert from ALAC")
+@Suite("WAV output convention")
 struct WAVOutputSmokeTest {
 
     @Test("WAVFileWriter.Format.wav の拡張子は 'wav'")
     func wavFormatExtension() {
         #expect(WAVFileWriter.Format.wav.fileExtension == "wav")
-        // ALAC は m4a (誤って既定にすると音声が壊れる)。Format 自体は残置されているが、
-        // AudioCaptureServiceImpl からは .wav を直値で渡しているので問題なし。
-        #expect(WAVFileWriter.Format.alac.fileExtension == "m4a")
     }
 
     @Test("FakeAudioCaptureService.start() の micAudioURL/systemAudioURL は .wav 拡張子")

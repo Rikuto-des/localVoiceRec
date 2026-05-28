@@ -135,8 +135,5 @@ struct SpeechAnalyzerCancelTests {
             return first
         }
         #expect(result == true, "cancelled transcribe stream did not terminate within timeout")
-
-        // cancelAll を呼んでも安全
-        await svc.cancelAll()
     }
 }

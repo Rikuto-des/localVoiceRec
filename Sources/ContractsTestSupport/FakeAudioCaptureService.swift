@@ -8,8 +8,6 @@ public actor FakeAudioCaptureService: AudioCaptureService {
     private nonisolated let stream: AsyncStream<CaptureState>
     private let levelContinuation: AsyncStream<AudioLevelSnapshot>.Continuation
     private nonisolated let levelStream: AsyncStream<AudioLevelSnapshot>
-    private let liveTranscriptContinuation: AsyncStream<TranscriptSegment>.Continuation
-    private nonisolated let liveTranscriptStream: AsyncStream<TranscriptSegment>
     private var startedAt: Date?
     private var session: CaptureSession?
     private var _currentState: CaptureState = .idle
@@ -29,18 +27,6 @@ public actor FakeAudioCaptureService: AudioCaptureService {
             bufferingPolicy: .bufferingNewest(2)
         ) { capturedLevels = $0 }
         self.levelContinuation = capturedLevels
-
-        // テスト/Preview で live transcripts を任意 yield するために continuation を保持する。
-        var capturedLive: AsyncStream<TranscriptSegment>.Continuation!
-        self.liveTranscriptStream = AsyncStream<TranscriptSegment>(
-            bufferingPolicy: .unbounded
-        ) { capturedLive = $0 }
-        self.liveTranscriptContinuation = capturedLive
-    }
-
-    /// テスト/Preview 用: live transcript セグメントを手動で yield する。
-    public nonisolated func emitLiveTranscript(_ segment: TranscriptSegment) {
-        liveTranscriptContinuation.yield(segment)
     }
 
     /// テスト用: 次回の start() が指定エラーを throw する。
@@ -73,8 +59,6 @@ public actor FakeAudioCaptureService: AudioCaptureService {
     public nonisolated var stateUpdates: AsyncStream<CaptureState> { stream }
 
     public nonisolated var liveAudioLevels: AsyncStream<AudioLevelSnapshot> { levelStream }
-
-    public nonisolated var liveTranscripts: AsyncStream<TranscriptSegment> { liveTranscriptStream }
 
     /// Fake: SystemAudioTap が無いので常に nil を返す。
     /// テストで具体的な値を返したい場合は `injectedSystemFlow` を設定する。

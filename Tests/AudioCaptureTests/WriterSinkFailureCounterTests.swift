@@ -34,7 +34,7 @@ struct WriterSinkFailureCounterTests {
             channels: 1,
             interleaved: false
         ) else { throw NSError(domain: "test", code: -1) }
-        let writer = try WAVFileWriter(url: tmp, format: fmt, containerFormat: .wav)
+        let writer = try WAVFileWriter(url: tmp, format: fmt)
         return (writer, fmt, tmp)
     }
 

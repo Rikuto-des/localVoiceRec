@@ -53,15 +53,6 @@ public protocol AudioCaptureService: Sendable {
     /// - 録音停止時に finish() するか否かは実装依存。consumer は途中切断を許容する。
     var liveAudioLevels: AsyncStream<AudioLevelSnapshot> { get }
 
-    /// 録音中の投機 ASR (P4.2) から流れてくる isFinal セグメント。
-    ///
-    /// ## セマンティクス
-    /// - live ASR が無効 (依存未注入 or 設定で off) な実装では「何も yield しない」が、
-    ///   `finish()` も呼ばずに永続的に空のストリームとして公開してよい。
-    /// - 録音停止後も `Recording` 確定までに残りの isFinal が遅延して届く可能性あり。
-    /// - 上位 (ViewModel) は購読しっぱなしで使う想定。
-    var liveTranscripts: AsyncStream<TranscriptSegment> { get }
-
     /// SystemAudioTap の現在の flow カウンタを返す。
     ///
     /// ## セマンティクス
