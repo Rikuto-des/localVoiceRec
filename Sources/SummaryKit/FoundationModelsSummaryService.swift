@@ -225,16 +225,30 @@ public actor FoundationModelsSummaryService: SummaryService {
         )
     }
 
+    // X3.8: parseDate のたびに DateFormatter/ISO8601DateFormatter を生成すると
+    // 各 actionItem の due 解決で都度コストがかかる。フォーマッタは static let で共有。
+    // 複数 dateFormat を試す箇所は事前生成済みの formatter を切り替える。
+    //
+    // 並行性: DateFormatter / ISO8601DateFormatter は Apple Foundation の公式
+    // ドキュメントで thread-safe と明記されている (内部状態は CF レベルで保護)。
+    // ただし Swift の Sendable には準拠していないため、nonisolated(unsafe) で
+    // ラップする必要がある (Swift 6 並行性チェック対応)。
+    private nonisolated(unsafe) static let isoParser = ISO8601DateFormatter()
+    private static let dateOnlyParsers: [DateFormatter] = {
+        ["yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-dd HH:mm:ss"].map { fmt in
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(secondsFromGMT: 0)
+            f.dateFormat = fmt
+            return f
+        }
+    }()
+
     static func parseDate(_ s: String) -> Date? {
         // ISO 8601 (yyyy-MM-ddTHH:mm:ssZ) を最優先
-        let iso = ISO8601DateFormatter()
-        if let d = iso.date(from: s) { return d }
-        // 年月日のみ
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(secondsFromGMT: 0)
-        for fmt in ["yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-dd HH:mm:ss"] {
-            f.dateFormat = fmt
+        if let d = isoParser.date(from: s) { return d }
+        // 年月日のみ (フォーマッタは static で再利用)
+        for f in dateOnlyParsers {
             if let d = f.date(from: s) { return d }
         }
         return nil

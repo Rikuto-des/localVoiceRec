@@ -73,6 +73,10 @@ public actor RecordingRepositoryImpl: RecordingRepository {
         var descriptor = FetchDescriptor<RecordingEntity>(
             sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
         )
+        // X3.3: relationship (segments / summary) のアクセスは fault による N+1 を
+        // 引き起こす。FetchDescriptor.relationshipKeyPathsForPrefetching で
+        // **一括 prefetch** することで、件数増 (100+) でも 1 回の fetch + 同梱で済む。
+        descriptor.relationshipKeyPathsForPrefetching = [\.segments, \.summary]
         if let limit {
             descriptor.fetchLimit = limit
         }
@@ -81,9 +85,9 @@ public actor RecordingRepositoryImpl: RecordingRepository {
         }
         let entities = try fetchOrThrow(descriptor)
 
-        // 録音のリレーションシップ (segments / summary) は遅延ロードされうるが、
-        // SwiftData は同一 ModelContext で count / nil チェックに必要な限り解決する。
-        // 子テーブルを N 回個別 fetch することはなく、必要なら 1 つの追加 fetch に閉じる。
+        // 録音のリレーションシップ (segments / summary) は上記の prefetch で同梱済み。
+        // ここでの !isEmpty / != nil チェックも faulting を再発させない (SwiftData が
+        // 既に backing store からロード済みの状態でアクセスする)。
         return try entities.map { entity in
             let dto = try entity.toDTO()
             let hasSegments = !entity.segments.isEmpty
@@ -101,14 +105,37 @@ public actor RecordingRepositoryImpl: RecordingRepository {
         guard !q.isEmpty else {
             return try await list(limit: nil, offset: nil)
         }
-        // SwiftData の #Predicate はメソッド呼び出し制約があるため、フェッチしてから filter する。
-        let descriptor = FetchDescriptor<RecordingEntity>(
+        // X3.4: 旧実装は全件 fetch → in-memory filter で、件数増に比例してメモリと
+        // 走査コストが線形に増えていた。SwiftData の `#Predicate` は
+        // `String.localizedStandardContains` を含む一部の String メソッドを
+        // サポートするので、まずはこれで DB 側に push down する。
+        // ただし backing store によっては未サポートで実行時 NSError を投げ得るので、
+        // 失敗時は従来通り fetch + in-memory filter にフォールバックする。
+        var descriptor = FetchDescriptor<RecordingEntity>(
+            predicate: #Predicate<RecordingEntity> { entity in
+                entity.title.localizedStandardContains(query)
+            },
             sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
         )
-        let entities = try fetchOrThrow(descriptor)
-        return try entities
-            .filter { $0.title.lowercased().contains(q) }
-            .map { try $0.toDTO() }
+        // 検索結果は上限を切る (UX 上 200 件もあれば十分。それ以上はユーザーが絞る)。
+        descriptor.fetchLimit = 200
+
+        do {
+            let entities = try context.fetch(descriptor)
+            return try entities.map { try $0.toDTO() }
+        } catch {
+            // #Predicate の localizedStandardContains 未サポート等。
+            // フォールバック: 全件 fetch + in-memory filter。fetchLimit でメモリ爆発を防ぐ。
+            var fallback = FetchDescriptor<RecordingEntity>(
+                sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+            )
+            fallback.fetchLimit = 1000
+            let entities = try fetchOrThrow(fallback)
+            return try entities
+                .filter { $0.title.lowercased().contains(q) }
+                .prefix(200)
+                .map { try $0.toDTO() }
+        }
     }
 
     public func get(id: UUID) async throws -> Recording? {

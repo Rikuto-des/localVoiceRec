@@ -433,8 +433,8 @@ struct DiagnosticsPanel: View {
                 var totalBytes = 0
                 let maxEntries = 500
                 let maxBytes = 100_000
-                let dateFmt = ISO8601DateFormatter()
-                dateFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                // X3.8: 都度生成せず、共有 static フォーマッタを参照
+                let dateFmt = AppFormatters.iso8601Fractional
 
                 for case let entry as OSLogEntryLog in entries {
                     let level: String

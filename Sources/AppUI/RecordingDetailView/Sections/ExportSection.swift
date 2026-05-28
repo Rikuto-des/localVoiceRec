@@ -75,10 +75,8 @@ extension RecordingDetailView {
     }
 
     func suggestedFilename(for recording: Recording, format: ExportFormat) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "yyyyMMdd"
-        let dateStr = formatter.string(from: recording.startedAt)
+        // X3.8: DateFormatter を都度生成しない (AppFormatters.exportFilenameDate を共有)
+        let dateStr = AppFormatters.exportFilenameDate.string(from: recording.startedAt)
         let safeTitle = recording.title
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")

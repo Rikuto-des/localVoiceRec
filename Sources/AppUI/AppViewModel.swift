@@ -232,8 +232,19 @@ public final class AppViewModel {
                 guard let self else { break }
                 if Task.isCancelled { break }
                 self.audioLevels.append(snap)
+                // X3.7: 旧実装の `removeAll { ... }` は配列全体を走査して条件付き削除を
+                // 行うため、buffer 内の **全要素** に対して closure 評価が走る (O(N))。
+                // audioLevels は時系列に単調増加で append されるので、先頭から
+                // cutoff 未満の要素を数えて `removeFirst(_:)` で一括除去する方が安い。
+                // 通常は 0〜1 件の除去で済むため平均コストは O(1) になる。
                 let cutoff = snap.elapsedSec - window
-                self.audioLevels.removeAll { $0.elapsedSec < cutoff }
+                var drop = 0
+                for s in self.audioLevels {
+                    if s.elapsedSec < cutoff { drop += 1 } else { break }
+                }
+                if drop > 0 {
+                    self.audioLevels.removeFirst(drop)
+                }
             }
         }
     }
@@ -516,15 +527,45 @@ public final class AppViewModel {
             segments = []
         }
 
+        // X3.2: collected は到着順を保持し、segments (UI 用) は insertion-sort で挿入する。
+        // 旧実装は 1 segment 到着ごとに `collected.sorted(by:)` を呼んでおり、
+        // N 個受信する間に O(N² log N) のソートが走っていた。Speech は概ね time order で
+        // 流すが、確定タイミングが前後する可能性があるため整合性のため挿入位置探索は
+        // 末尾線形 (新しいものほど末尾に来やすい仮定で平均 O(1) に近い) を採る。
+        //
+        // さらに UI 更新は 200ms 以上経過したタイミングだけに間引き、@Observable の
+        // 再描画頻度を抑える (バーストで segment が来る間の中間描画を省く)。
         var collected: [TranscriptSegment] = []
+        let isSelected = { [weak self] in self?.selectedRecording?.id == recording.id }
         do {
+            var sortedForUI: [TranscriptSegment] = []
+            var lastUIFlush = ContinuousClock.now
+            let uiFlushInterval: Duration = .milliseconds(200)
             for try await segment in transcription.transcribe(recording: recording, locale: locale) {
                 collected.append(segment)
-                if selectedRecording?.id == recording.id {
-                    segments = collected.sorted { $0.startSec < $1.startSec }
+                if isSelected() {
+                    // 末尾から挿入位置を探す (最新の startSec は通常末尾に近い)。
+                    var idx = sortedForUI.count
+                    while idx > 0 && sortedForUI[idx - 1].startSec > segment.startSec {
+                        idx -= 1
+                    }
+                    sortedForUI.insert(segment, at: idx)
+
+                    // 200ms ごとに UI へ flush。最後の 1 件は break 後にコミットされる。
+                    let now = ContinuousClock.now
+                    if now - lastUIFlush >= uiFlushInterval {
+                        segments = sortedForUI
+                        lastUIFlush = now
+                    }
                 }
             }
+            // ループ終了時に未 flush 分があれば反映 (`==` は Duration を比較できないので
+            // 端数なくキャッチアップ目的で常に代入)。
+            if isSelected() {
+                segments = sortedForUI
+            }
             // isFinal == true のものを優先。0 件なら collected を fallback（UX 退行防止）。
+            // X3.2: 既に collected 全件が必要なので、ここでの最終 sort は 1 回だけ走る。
             let finalized = collected.filter(\.isFinal).sorted { $0.startSec < $1.startSec }
             let preDedup = finalized.isEmpty ? collected.sorted { $0.startSec < $1.startSec } : finalized
             // File-based 経路では cross-channel echo を検出してマーク。

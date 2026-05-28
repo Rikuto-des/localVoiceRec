@@ -5,13 +5,28 @@ import AppKit
 extension RecordingDetailView {
     // MARK: - Transcript
 
+    /// X3.1.a: mic/system セグメント数を 1 ループで数える。
+    /// 旧実装は `segments.filter { ... }.count` × 2 回で各セグメントを最大 2 回触っていた。
+    private func transcriptCounts() -> (total: Int, mic: Int, system: Int) {
+        var micCount = 0
+        var systemCount = 0
+        for seg in viewModel.segments {
+            switch seg.source {
+            case .mic: micCount += 1
+            case .system: systemCount += 1
+            }
+        }
+        return (viewModel.segments.count, micCount, systemCount)
+    }
+
     @ViewBuilder
     var transcriptSection: some View {
+        let counts = transcriptCounts()
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             TranscriptHeader(
-                segmentCount: viewModel.segments.count,
-                micCount: viewModel.segments.filter { $0.source == .mic }.count,
-                systemCount: viewModel.segments.filter { $0.source == .system }.count
+                segmentCount: counts.total,
+                micCount: counts.mic,
+                systemCount: counts.system
             ) {
                 transcribeControls
             }

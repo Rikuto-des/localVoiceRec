@@ -79,11 +79,37 @@ enum Theme {
 }
 
 /// よく使う日付/時間のフォーマッタ。
+///
+/// `DateFormatter` / `ISO8601DateFormatter` は生成コストが高く、setter (`dateFormat` 等)
+/// が走るたびに内部の format cache が無効化される。アプリ全体で頻繁に呼ばれる箇所では
+/// **static let** で 1 度だけ生成して使い回す方針 (X3.8)。
+///
+/// `DateFormatter` は thread-safe (Apple foundation 公式) なので
+/// nonisolated にしておいて差し支えない。
 enum AppFormatters {
+    // X3.8: DateFormatter / ISO8601DateFormatter は thread-safe (Apple foundation 公式)。
+    // 都度生成すると CFLocale / CFDateFormatter の cache が無効化されるので static let
+    // で共有する。macOS 26 SDK では DateFormatter は Sendable に昇格しているため
+    // 修飾子は不要。ISO8601DateFormatter は未昇格なので nonisolated(unsafe)。
     static let dateTime: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "yyyy/MM/dd HH:mm"
+        return f
+    }()
+
+    /// エクスポートファイル名のサフィックス用 (yyyyMMdd, ja_JP)。
+    static let exportFilenameDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyyMMdd"
+        return f
+    }()
+
+    /// 診断ログ用 ISO-8601 (fractional seconds 付き)。
+    nonisolated(unsafe) static let iso8601Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 

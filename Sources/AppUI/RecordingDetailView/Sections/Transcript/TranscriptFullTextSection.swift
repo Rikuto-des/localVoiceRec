@@ -37,7 +37,14 @@ struct TranscriptFullTextSection: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        // X3.1.b: 旧実装は `visibleSegments` (sorted コピー) を 1 回の body 評価で
+        // - currentFullText → formatted(.plain) → visibleSegments
+        // - copyButton 内 `visibleSegments.isEmpty` × 3 回
+        // と最大 4 回計算していた。body 単位で一度だけ計算してローカルへ束ねる。
+        let visible = visibleSegments
+        let fullText = formatted(mode: .plain, segments: visible)
+        let isEmpty = visible.isEmpty
+        return DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Slack や Notion に貼り付けやすい、整形済みプレーンテキストです。")
@@ -63,7 +70,7 @@ struct TranscriptFullTextSection: View {
                 .controlSize(.mini)
 
                 ScrollView(.vertical) {
-                    Text(verbatim: currentFullText)
+                    Text(verbatim: fullText)
                         .font(.system(.body))
                         .lineSpacing(4)
                         .textSelection(.enabled)
@@ -83,9 +90,9 @@ struct TranscriptFullTextSection: View {
                 .accessibilityHint("選択してコピーできます")
 
                 HStack(spacing: Theme.Spacing.sm) {
-                    copyButton(.plain)
-                    copyButton(.markdown)
-                    copyButton(.noTimestamp)
+                    copyButton(.plain, disabled: isEmpty)
+                    copyButton(.markdown, disabled: isEmpty)
+                    copyButton(.noTimestamp, disabled: isEmpty)
                 }
             }
             .padding(.top, Theme.Spacing.sm)
@@ -100,7 +107,7 @@ struct TranscriptFullTextSection: View {
     // MARK: - Buttons
 
     @ViewBuilder
-    private func copyButton(_ mode: CopyMode) -> some View {
+    private func copyButton(_ mode: CopyMode, disabled: Bool) -> some View {
         Button {
             copy(mode: mode)
         } label: {
@@ -108,7 +115,7 @@ struct TranscriptFullTextSection: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .disabled(visibleSegments.isEmpty)
+        .disabled(disabled)
         .help(helpText(for: mode))
     }
 
@@ -127,12 +134,14 @@ struct TranscriptFullTextSection: View {
         return hideEcho ? sorted.filter { !$0.isLikelyEcho } : sorted
     }
 
-    private var currentFullText: String {
-        formatted(mode: .plain)
+    /// 旧 API 互換 (テスト等から呼ばれる可能性に備えて残す)。
+    func formatted(mode: CopyMode) -> String {
+        return formatted(mode: mode, segments: visibleSegments)
     }
 
-    func formatted(mode: CopyMode) -> String {
-        let segs = visibleSegments
+    /// X3.1.b: 事前に算出した `segments` (visibleSegments の結果) を受け取って整形する。
+    /// body 内で 1 度だけ計算した結果を使い回すための内部 API。
+    func formatted(mode: CopyMode, segments segs: [TranscriptSegment]) -> String {
         guard !segs.isEmpty else { return "（文字起こし結果がここに表示されます）" }
         switch mode {
         case .plain:

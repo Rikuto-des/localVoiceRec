@@ -165,9 +165,15 @@ public actor FakeAudioCaptureService: AudioCaptureService {
         return recording
     }
 
+    /// X3.8: 都度生成を避けるため static let に。
+    /// DateFormatter は thread-safe (Apple foundation 公式)。macOS 26 SDK で Sendable。
+    private static let defaultTitleFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
+
     private static func defaultTitle(at date: Date) -> String {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd HH:mm"
-        return "Meeting \(df.string(from: date))"
+        return "Meeting \(defaultTitleFormatter.string(from: date))"
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import AVFAudio
 @preconcurrency import AVFoundation
+import Accelerate
 import CoreAudio
 import Contracts
 import AudioTapKit
@@ -749,10 +750,18 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     // MARK: - Defaults
 
+    /// X3.8: defaultTitle 用の DateFormatter。
+    /// 録音停止のたびに `DateFormatter()` を作ると `dateFormat` 設定で内部キャッシュが
+    /// 無効化されるため、static let で 1 度だけ生成して使い回す。
+    /// macOS 26 SDK では DateFormatter は Sendable のため修飾子不要。
+    private static let defaultTitleFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
+
     private static func defaultTitle(at date: Date) -> String {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd HH:mm"
-        return "Meeting \(df.string(from: date))"
+        return "Meeting \(defaultTitleFormatter.string(from: date))"
     }
 }
 
@@ -873,11 +882,17 @@ final class WriterSink: @unchecked Sendable {
         // レベル計算は pause 中も継続 (UI 用)
         accumulator.add(buffer)
 
+        // X3.6: 旧実装は 1 buffer あたり NSLock を 3 回取得していた。これを
+        // **1 回のロック** にまとめ、必要な状態 (paused/closed/writer) を
+        // 一度に取得する。書き込み後の bytesTotal/failureCount 更新だけは、
+        // wave 書き込み (I/O) をロック内で実行しないよう **後追いで 1 回** 取得する設計に留める。
         lock.lock()
-        let shouldWrite = !paused && !closed
+        let isClosed = closed
+        let isPaused = paused
         let w = writer
         lock.unlock()
-        guard shouldWrite, let w else { return }
+
+        guard !isClosed, !isPaused, let w else { return }
         do {
             try w.write(buffer)
             // 書き込み成功 → バイト数を加算 (frameLength * bytesPerFrame)
@@ -944,29 +959,33 @@ final class LevelAccumulator: @unchecked Sendable {
 
         switch buffer.format.commonFormat {
         case .pcmFormatFloat32:
+            // X3.5: Float32 経路は Accelerate (vDSP) で SIMD 化。
+            // - 二乗和: vDSP_svesq → 一発で sum(x²) を返す
+            // - 振幅ピーク: vDSP_maxmgv → 一発で max(|x|) を返す
+            // 旧実装は per-sample Swift ループで abs/乗算/比較を回しており、
+            // 100ms 分 (~ 4800 sample × 2ch) を毎 buffer 計算する常駐コストが大きかった。
             if buffer.format.isInterleaved {
-                // 1 本のバッファに全 ch interleave
                 if let base = buffer.floatChannelData?[0] {
-                    let total = frames * channels
-                    for i in 0..<total {
-                        let v = base[i]
-                        let a = abs(v)
-                        if a > localPeak { localPeak = a }
-                        localSumSq += Double(v) * Double(v)
-                    }
-                    localCount = total
+                    let total = vDSP_Length(frames * channels)
+                    var sumSq: Float = 0
+                    var peak: Float = 0
+                    vDSP_svesq(base, 1, &sumSq, total)
+                    vDSP_maxmgv(base, 1, &peak, total)
+                    localSumSq = Double(sumSq)
+                    if peak > localPeak { localPeak = peak }
+                    localCount = Int(total)
                 }
             } else {
-                // planar: ch ごとに別ポインタ
                 if let chs = buffer.floatChannelData {
+                    let len = vDSP_Length(frames)
                     for ch in 0..<channels {
                         let p = chs[ch]
-                        for i in 0..<frames {
-                            let v = p[i]
-                            let a = abs(v)
-                            if a > localPeak { localPeak = a }
-                            localSumSq += Double(v) * Double(v)
-                        }
+                        var sumSq: Float = 0
+                        var peak: Float = 0
+                        vDSP_svesq(p, 1, &sumSq, len)
+                        vDSP_maxmgv(p, 1, &peak, len)
+                        localSumSq += Double(sumSq)
+                        if peak > localPeak { localPeak = peak }
                     }
                     localCount = frames * channels
                 }
