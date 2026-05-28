@@ -183,6 +183,62 @@ struct SegmentDeduplicatorTests {
         #expect(out.map(\.id) == [id1, id2, id3])
     }
 
+    // MARK: - Threshold boundary
+
+    @Test("overlap が ちょうど 50% (= threshold 0.5) → echo マークされる (>= 包含側)")
+    func overlapAtExactlyFiftyPercentMarks() {
+        // mic: 0.0..2.0 (len 2.0), sys: 1.0..2.0 (len 1.0)
+        // overlap = min(2.0, 2.0) - max(0.0, 1.0) = 1.0
+        // shorter = min(2.0, 1.0) = 1.0 → ratio = 1.0 / 1.0 = 1.0 (>= 0.5 OK)
+        // ちょうど 0.5 のケース: mic 0.0..2.0 (len 2.0), sys 1.0..3.0 (len 2.0)
+        // overlap = min(2.0, 3.0) - max(0.0, 1.0) = 1.0
+        // shorter = 2.0 → ratio = 0.5
+        let micID = UUID()
+        let segs = [
+            Self.seg(source: .mic, start: 0.0, end: 2.0, text: "皆さんこんばんは", id: micID),
+            Self.seg(source: .system, start: 1.0, end: 3.0, text: "皆さんこんばんは"),
+        ]
+        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        #expect(out.first { $0.id == micID }!.isLikelyEcho == true,
+                "0.5 ちょうど は overlapThreshold に含まれる (>= 比較)")
+    }
+
+    @Test("overlap が 0.49 (threshold 未満) → echo マークされない")
+    func overlapJustBelowFiftyPercentNotMarked() {
+        // mic 0.0..2.0 (len 2.0), sys 1.02..3.02 (len 2.0)
+        // overlap = 2.0 - 1.02 = 0.98 → ratio = 0.49
+        let micID = UUID()
+        let segs = [
+            Self.seg(source: .mic, start: 0.0, end: 2.0, text: "皆さんこんばんは", id: micID),
+            Self.seg(source: .system, start: 1.02, end: 3.02, text: "皆さんこんばんは"),
+        ]
+        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        #expect(out.first { $0.id == micID }!.isLikelyEcho == false,
+                "0.49 (< 0.5) は閾値未満で echo マークされない")
+    }
+
+    @Test("textSimilarity がちょうど 0.7 → echo として含まれる (>= threshold)")
+    func similarityAtExactlySeventyPercentIncluded() {
+        // 10 文字 vs 10 文字、3 文字異なる → 距離 3 → 類似度 = 1 - 3/10 = 0.7
+        let a = "あいうえおかきくけこ"
+        let b = "あいうえおかきXYZ" // 末尾 3 文字違い
+        let sim = SegmentDeduplicator.textSimilarity(a, b)
+        #expect(abs(sim - 0.7) < 0.001, "実測類似度 \(sim) ≒ 0.7")
+        #expect(sim >= SegmentDeduplicator.textSimilarityThreshold,
+                "0.7 ちょうどは threshold (>=) に含まれる")
+    }
+
+    @Test("textSimilarity が 0.69 → echo として除外される")
+    func similarityJustBelowSeventyPercentExcluded() {
+        // 10 文字 vs 10 文字、4 文字異なる → 距離 4 → 類似度 = 1 - 4/10 = 0.6
+        // 0.69 ピッタリは整数距離で作れないので、近い値 (0.6 < 0.7) で boundary を確認。
+        let a = "あいうえおかきくけこ"
+        let b = "あいうえおWXYZ?" // 4 文字違い
+        let sim = SegmentDeduplicator.textSimilarity(a, b)
+        #expect(sim < SegmentDeduplicator.textSimilarityThreshold,
+                "実測類似度 \(sim) は 0.7 未満で除外されるべき")
+    }
+
     @Test("isLikelyEcho 以外のフィールドは保持される")
     func preservesOtherFields() {
         let micID = UUID()

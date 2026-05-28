@@ -7,6 +7,9 @@ public actor InMemoryRecordingRepository: RecordingRepository {
     private var recordings: [UUID: Recording] = [:]
     private var segments: [UUID: [TranscriptSegment]] = [:]
     private var summaries: [UUID: SummaryDocument] = [:]
+    /// テスト用: `search(query:)` が呼ばれた累計回数。
+    /// debounce が機能しているかを検証する用途。
+    public private(set) var searchCallCount: Int = 0
 
     public init(seed: [Recording] = []) {
         for r in seed { recordings[r.id] = r }
@@ -39,6 +42,7 @@ public actor InMemoryRecordingRepository: RecordingRepository {
     }
 
     public func search(query: String) async throws -> [Recording] {
+        searchCallCount += 1
         let q = query.lowercased()
         guard !q.isEmpty else { return try await list(limit: nil, offset: nil) }
         return recordings.values

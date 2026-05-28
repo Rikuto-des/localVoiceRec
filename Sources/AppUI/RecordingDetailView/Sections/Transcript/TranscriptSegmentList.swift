@@ -60,17 +60,12 @@ struct TranscriptSegmentList: View {
     // MARK: - Derived
 
     private var filteredSegments: [TranscriptSegment] {
-        let trimmed = debouncedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        return segments.filter { seg in
-            if hideEcho && seg.isLikelyEcho { return false }
-            if !filter.includes(seg.source) { return false }
-            if !trimmed.isEmpty {
-                if seg.text.range(of: trimmed, options: [.caseInsensitive]) == nil {
-                    return false
-                }
-            }
-            return true
-        }
+        TranscriptSegmentFilter.apply(
+            segments,
+            query: debouncedQuery,
+            filter: filter,
+            hideEcho: hideEcho
+        )
     }
 
     private var matchCount: Int {
@@ -100,6 +95,36 @@ struct TranscriptSegmentList: View {
         .subtleSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("一致するセグメントがありません")
+    }
+}
+
+/// `TranscriptSegmentList.filteredSegments` 相当の純関数版。
+///
+/// テストから SwiftUI View struct のメタタイプにアクセスすると runtime が
+/// 不安定になる (`swiftpm-testing-helper` の SIGTRAP) ため、ロジックは
+/// View 外の独立した namespace に切り出している。
+enum TranscriptSegmentFilter {
+    /// 引数:
+    /// - `query`: 検索クエリ (前後空白は trim される)
+    /// - `filter`: 話者フィルタ
+    /// - `hideEcho`: true なら `isLikelyEcho` を除外
+    static func apply(
+        _ segments: [TranscriptSegment],
+        query: String,
+        filter: SpeakerFilter,
+        hideEcho: Bool
+    ) -> [TranscriptSegment] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return segments.filter { seg in
+            if hideEcho && seg.isLikelyEcho { return false }
+            if !filter.includes(seg.source) { return false }
+            if !trimmed.isEmpty {
+                if seg.text.range(of: trimmed, options: [.caseInsensitive]) == nil {
+                    return false
+                }
+            }
+            return true
+        }
     }
 }
 

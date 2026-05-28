@@ -123,7 +123,7 @@ public final class AppViewModel {
     /// - case 名 (`String(describing:)`) はユーザーに見せない
     /// - 代わりに **次に何をすればよいか** を日本語で書く
     /// - 詳細は `uiErrorLog` (os.log) に流して開発者だけが見られるようにする
-    private func userMessage(for error: Error, context: String) -> String {
+    func userMessage(for error: Error, context: String) -> String {
         // 開発者向けには case 名を含む詳細を残す
         uiErrorLog.error("\(context, privacy: .public): \(String(describing: error), privacy: .public)")
 
