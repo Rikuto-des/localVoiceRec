@@ -170,13 +170,19 @@ struct DiagnosticsPanel: View {
     private func systemFlowSection(_ flow: SystemFlowSnapshot) -> some View {
         let suspiciousSilentDenial = flow.callCount > 0 && flow.nonZeroBufferCount == 0
         section(title: "システム音声 flow") {
-            row(label: "IOProc 呼び出し", value: "\(flow.callCount)", isWarning: false)
-            row(label: "受信バイト", value: "\(flow.bytesReceived)", isWarning: flow.callCount > 0 && flow.bytesReceived == 0)
-            row(label: "非ゼロバッファ", value: "\(flow.nonZeroBufferCount)", isWarning: suspiciousSilentDenial)
-            row(label: "ドロップ", value: "\(flow.droppedPushCount)", isWarning: flow.droppedPushCount > 0)
+            // X4.8: 技術用語の日本語ラベル化。元の用語は .help() のツールチップに退避し、
+            // エンジニアのデバッグ時には hover で復元できる。
+            row(label: "システム音声の信号検出", value: "\(flow.callCount)",
+                isWarning: false, help: "IOProc 呼び出し回数")
+            row(label: "受信データ量", value: "\(flow.bytesReceived)",
+                isWarning: flow.callCount > 0 && flow.bytesReceived == 0, help: "受信バイト (bytesReceived)")
+            row(label: "実音検出回数", value: "\(flow.nonZeroBufferCount)",
+                isWarning: suspiciousSilentDenial, help: "非ゼロバッファ (nonZeroBufferCount)")
+            row(label: "破棄バッファ数", value: "\(flow.droppedPushCount)",
+                isWarning: flow.droppedPushCount > 0, help: "ドロップ (droppedPushCount)")
             if suspiciousSilentDenial {
                 Label {
-                    Text("⚠️ IOProc は呼ばれていますが信号がゼロです。画面収録権限を確認してください。")
+                    Text("システム音声の信号検出は発生していますが、実音データがゼロです。画面収録権限を確認してください。")
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "exclamationmark.octagon.fill")
@@ -207,7 +213,7 @@ struct DiagnosticsPanel: View {
         }
     }
 
-    private func row(label: String, value: String, isWarning: Bool) -> some View {
+    private func row(label: String, value: String, isWarning: Bool, help: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.footnote)
@@ -227,6 +233,7 @@ struct DiagnosticsPanel: View {
                     .multilineTextAlignment(.trailing)
             }
         }
+        .help(help ?? "")
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)\(isWarning ? "（要確認）" : "")")
     }
@@ -316,18 +323,18 @@ struct DiagnosticsPanel: View {
     }
 
     /// A7: 拒否対象に応じたガイド文。
+    /// X4.11: `deniedHelpBox` は少なくとも片方が denied のときだけ表示されるため、
+    /// (false, false) 分岐は到達不能 — 削除した。
     private var deniedHelpMessage: String {
         let micDenied = viewModel.diagnostics.micAuthorization == .denied
         let systemDenied = viewModel.diagnostics.systemAudioAuthorization == .denied
-        switch (micDenied, systemDenied) {
-        case (true, true):
+        if micDenied && systemDenied {
             return "マイクと画面収録の両方が拒否されています。システム設定でそれぞれ localVoiceRec を有効にしてください。まずマイクの設定を開きます。"
-        case (true, false):
+        } else if micDenied {
             return "マイクの権限が拒否されています。システム設定 → プライバシーとセキュリティ → マイク で localVoiceRec を許可してください。"
-        case (false, true):
+        } else {
+            // systemDenied — `deniedHelpBox` の出現条件より、ここでは必ず true。
             return "システム音声 (画面とシステムオーディオの収録) が拒否されています。システム設定で localVoiceRec を許可してください。"
-        case (false, false):
-            return "一度「拒否」した権限は、システム設定からのみ許可に変更できます。"
         }
     }
 
@@ -378,7 +385,7 @@ struct DiagnosticsPanel: View {
         case .unavailable(let reason):
             switch reason {
             case .deviceNotEligible: return "端末非対応"
-            case .appleIntelligenceNotEnabled: return "AI 無効"
+            case .appleIntelligenceNotEnabled: return "Apple Intelligence が無効"
             case .modelNotReady: return "モデル準備中"
             case .unsupportedOS: return "OS 非対応"
             }

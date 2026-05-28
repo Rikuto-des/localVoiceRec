@@ -62,12 +62,8 @@ struct TranscriptFullTextSection: View {
                     }
                 }
 
-                Toggle(isOn: $hideEcho) {
-                    Text("回り込みを除外してコピー")
-                        .font(.caption)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
+                // X4.10: 「回り込みを除外」トグルは検索バー側 (TranscriptSearchBar) に統一。
+                // ここで重複表示すると同じ状態を 2 つの UI が制御し、混乱の元になる。
 
                 ScrollView(.vertical) {
                     Text(verbatim: fullText)

@@ -15,7 +15,7 @@ struct InsufficientContentView: View {
             ContentUnavailableView {
                 Label("十分な内容が無いため要約を生成しませんでした", systemImage: "text.magnifyingglass")
             } description: {
-                Text("録音が短いか、相槌のみで構成されている可能性があります。\n手動で再生成する場合は下のボタンを押してください。")
+                Text("録音が短いか、相槌のみで構成されている可能性があります。手動で再生成する場合は下のボタンを押してください。")
                     .multilineTextAlignment(.center)
             } actions: {
                 Button {

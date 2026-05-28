@@ -48,12 +48,8 @@ struct TranscriptSegmentList: View {
                 }
             }
         }
-        .onKeyPress(.init("f"), phases: .down) { press in
-            if press.modifiers.contains(.command) {
-                isSearchFocused = true
-                return .handled
-            }
-            return .ignored
+        .onReceive(NotificationCenter.default.publisher(for: .focusTranscriptSearch)) { _ in
+            isSearchFocused = true
         }
     }
 

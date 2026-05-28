@@ -25,7 +25,7 @@ struct SummaryHeader<Trailing: View>: View {
                         )
                         .monospacedDigit()
                         Text("·").foregroundStyle(.tertiary)
-                        Label("Foundation Models", systemImage: "sparkles")
+                        Label("Apple Intelligence", systemImage: "sparkles")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)

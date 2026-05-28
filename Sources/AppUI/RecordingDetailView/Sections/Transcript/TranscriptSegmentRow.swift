@@ -87,6 +87,7 @@ struct TranscriptSegmentRow: View {
                         in: RoundedRectangle(cornerRadius: Theme.Layout.pillCornerRadius, style: .continuous)
                     )
                     .foregroundStyle(Theme.Palette.warning)
+                    .help("確定前の途中結果")
             }
         }
         .foregroundStyle(.secondary)
@@ -122,7 +123,9 @@ struct TranscriptSegmentRow: View {
                     .font(.caption2)
                     .foregroundStyle(Theme.Palette.success)
                     .transition(reduceMotion ? .identity : .opacity)
-            } else if isHovering {
+            } else if isHovering || isFocused {
+                // X4.3: hover だけでなくキーボードフォーカス時にも表示し、a11y 到達性を確保。
+                // 「準備中」だった再生 / 編集ボタンは未実装機能のため非表示 (VoiceOver tab 順を汚さない)。
                 Button {
                     copySegment()
                 } label: {
@@ -133,30 +136,6 @@ struct TranscriptSegmentRow: View {
                 .controlSize(.small)
                 .help("このセグメントをコピー (⌘C)")
                 .accessibilityLabel("このセグメントをコピー")
-
-                Button {
-                    onPlayFromHere()
-                } label: {
-                    Label("この時刻から再生", systemImage: "play.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .disabled(true)
-                .help("この時刻から再生 (準備中)")
-                .accessibilityLabel("この時刻から再生 (準備中)")
-
-                Button {
-                    // 編集は未実装
-                } label: {
-                    Label("編集", systemImage: "pencil")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .disabled(true)
-                .help("編集 (準備中)")
-                .accessibilityLabel("編集 (準備中)")
             }
         }
         .frame(height: 18)
@@ -217,7 +196,11 @@ struct TranscriptSegmentRow: View {
         var attributed = AttributedString(text)
         var searchRange = attributed.startIndex..<attributed.endIndex
         while let range = attributed[searchRange].range(of: trimmed, options: [.caseInsensitive]) {
+            // X4.4: 色のみに依存しないハイライト。背景は維持しつつ underline で形状的にも区別、
+            // 文字色は .primary 固定でコントラスト低下を防ぐ。
             attributed[range].backgroundColor = Color.yellow.opacity(0.5)
+            attributed[range].foregroundColor = Color.primary
+            attributed[range].underlineStyle = .single
             attributed[range].inlinePresentationIntent = .stronglyEmphasized
             searchRange = range.upperBound..<attributed.endIndex
             if searchRange.isEmpty { break }

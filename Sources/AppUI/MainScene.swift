@@ -53,8 +53,22 @@ public struct MainScene: Scene {
         // メニューバーポップアップを開かなくても録音制御が可能。
         .commands {
             RecordingCommands(viewModel: viewModel)
+            // X4.2: macOS 標準 ⌘F (Find) を「文字起こし内検索」にバインド。
+            // textEditing グループを置き換え、メインメニュー → 編集 → 検索 にも露出。
+            CommandGroup(replacing: .textEditing) {
+                Button("検索…") {
+                    NotificationCenter.default.post(name: .focusTranscriptSearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
         }
     }
+}
+
+extension Notification.Name {
+    /// 文字起こし内検索の入力欄にフォーカスを移すための内部通知。
+    /// `MainScene` の ⌘F コマンドが post、`TranscriptSegmentList` が受信。
+    static let focusTranscriptSearch = Notification.Name("localVoiceRec.focusTranscriptSearch")
 }
 
 /// A3: 「録音」メニュー。`CommandMenu` でメインメニューにマウントされる。

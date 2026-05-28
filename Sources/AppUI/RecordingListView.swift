@@ -56,9 +56,13 @@ struct RecordingListView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
+        // X4.6: `searchable` は常時マウントし、empty state は内側で表示する。
+        // 旧実装は録音 0 件のとき searchable が消えて検索欄の出現/消失が起きていた。
         Group {
-            if viewModel.recordings.isEmpty {
+            if viewModel.recordings.isEmpty && searchText.isEmpty {
                 emptyState
+            } else if viewModel.recordings.isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
                 List(selection: $selectedID) {
                     ForEach(viewModel.recordings) { recording in
@@ -120,7 +124,9 @@ struct RecordingListView: View {
                 Button {
                     Task { await viewModel.retryAllPendingTranscriptions() }
                 } label: {
-                    Label("未処理を一括処理", systemImage: "wand.and.stars")
+                    // X4.9: 動的件数で「何件処理されるか」を事前に伝える。
+                    Label(pendingWorkCount > 0 ? "未処理 \(pendingWorkCount) 件を再処理" : "未処理を再処理",
+                          systemImage: "wand.and.stars")
                 }
                 .disabled(!hasPendingWork || viewModel.isTranscribing)
                 .help("未文字起こし・無音・失敗の録音をまとめて再処理します")
@@ -138,10 +144,15 @@ struct RecordingListView: View {
 
     /// 一括 retry 対象が 1 件でもあるか。
     private var hasPendingWork: Bool {
-        viewModel.recordings.contains { r in
+        pendingWorkCount > 0
+    }
+
+    /// 一括 retry 対象の件数。X4.9: ボタンラベルへ動的に出すために露出。
+    private var pendingWorkCount: Int {
+        viewModel.recordings.reduce(0) { count, r in
             switch viewModel.status(for: r.id) {
-            case .pending, .emptyTranscript, .failed: return true
-            default: return false
+            case .pending, .emptyTranscript, .failed: return count + 1
+            default: return count
             }
         }
     }

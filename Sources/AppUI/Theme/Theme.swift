@@ -130,13 +130,17 @@ enum AppFormatters {
         return String(format: "%02d:%02d:%02d", h, m, s)
     }
 
-    /// VoiceOver 用の読み上げ表記。`75.0` → `0時1分15秒`。
+    /// VoiceOver 用の読み上げ表記。`75.0` → `1分15秒`、`3675.0` → `1時間1分15秒`。
+    /// X4.9: 0 時のときは「0時」を省略し、VoiceOver の冗長な読み上げを避ける。
     static func timestampHMSSpoken(from seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded()))
         let h = total / 3600
         let m = (total % 3600) / 60
         let s = total % 60
-        return "\(h)時\(m)分\(s)秒"
+        if h > 0 {
+            return "\(h)時間\(m)分\(s)秒"
+        }
+        return "\(m)分\(s)秒"
     }
 
     /// 録音継続時間を `H時間M分S秒` 表記にする（時間が 0 なら省略）。

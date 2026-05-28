@@ -172,7 +172,7 @@ struct MenuBarContentView: View {
                 .foregroundStyle(Theme.Palette.error)
         case .interrupted(let reason, _, _):
             // A1: 中断時は「停止して保存」の操作を必ず案内する。
-            Text("スリープや音声機器の変更で録音が中断されました (\(Self.label(for: reason)))。下のボタンから停止して保存できます。")
+            Text("録音が中断されました: \(Self.label(for: reason))。下のボタンから停止して保存できます。")
                 .font(.footnote)
                 .foregroundStyle(Theme.Palette.warning)
                 .fixedSize(horizontal: false, vertical: true)
@@ -298,7 +298,7 @@ struct MenuBarContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut("q")
+            .keyboardShortcut("q", modifiers: .command)
             .controlSize(.regular)
             .help("localVoiceRec を終了します (⌘Q)")
         }
