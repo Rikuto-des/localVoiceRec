@@ -127,68 +127,10 @@ public final class AppViewModel {
         uiErrorLog.error("\(context, privacy: .public): \(String(describing: error), privacy: .public)")
 
         switch error {
-        case let captureError as AudioCaptureError:
-            switch captureError {
-            case .microphonePermissionDenied:
-                return "マイクへのアクセス許可が必要です。システム設定 → プライバシーとセキュリティ → マイク で localVoiceRec を有効にしてください。"
-            case .systemAudioPermissionDenied:
-                return "システム音声を録音するには画面収録の許可が必要です。システム設定 → プライバシーとセキュリティ → 画面とシステムオーディオの収録 で localVoiceRec を有効にしてください。"
-            case .engineStartFailed:
-                return "オーディオエンジンを起動できませんでした。他のアプリがマイクを占有していないか確認し、再試行してください。"
-            case .processTapCreateFailed, .aggregateDeviceCreateFailed:
-                return "システム音声の取得に失敗しました。アプリを再起動するか、Mac を再起動して再試行してください。"
-            case .alreadyRecording:
-                return "既に録音中です。先に現在の録音を停止してください。"
-            case .notRecording:
-                return "録音は開始されていません。"
-            case .fileWriteFailed:
-                return "録音ファイルの書き込みに失敗しました。空き容量と書き込み権限を確認してください。"
-            case .outputDirectoryUnavailable:
-                return "録音保存先フォルダにアクセスできません。アプリの保存先設定を確認してください。"
-            case .diskWriteFailure(let failureCount):
-                return "録音ファイルの書き込みエラーが \(failureCount) 回連続で発生したため録音を停止しました。ディスクの空き容量と書き込み権限を確認してください。"
-            }
-
-        case let transcriptionError as TranscriptionError:
-            switch transcriptionError {
-            case .unsupportedLocale:
-                return "選択された言語の文字起こしに対応していません。診断パネルでインストール済み Locale を確認してください。"
-            case .assetInstallationFailed:
-                return "文字起こしに必要なモデルのインストールに失敗しました。ネットワーク接続を確認して再試行してください。"
-            case .analyzerFailed:
-                return "文字起こし処理が中断されました。録音ファイルを確認し、再実行してください。"
-            case .fileNotReadable:
-                return "録音ファイルを読み込めません。ファイルが移動・削除されていないか確認してください。"
-            case .cancelled:
-                return "文字起こしはキャンセルされました。"
-            }
-
-        case let summaryError as SummaryError:
-            switch summaryError {
-            case .notAvailable:
-                return "要約サービスが利用できません。Apple Intelligence の設定とモデルのダウンロード状況を確認してください。"
-            case .generationFailed:
-                return "要約の生成に失敗しました。少し待ってから再試行してください。"
-            case .contextWindowExceeded:
-                return "録音内容が要約モデルの上限を超えています。録音を分割するか、短い区間で再試行してください。"
-            case .cancelled:
-                return "要約生成はキャンセルされました。"
-            case .decodingFailed:
-                return "要約の解析に失敗しました。もう一度生成を試してください。"
-            }
-
-        case let repoError as RepositoryError:
-            switch repoError {
-            case .notFound:
-                return "対象の録音が見つかりませんでした。一覧を更新してください。"
-            case .ioFailed:
-                return "データの読み書きに失敗しました。空き容量とアクセス権限を確認してください。"
-            case .storeUnavailable:
-                return "データストアにアクセスできません。アプリを再起動してください。"
-            case .fileDeletionFailed:
-                return "ファイルの削除に失敗しました。手動で Finder から削除してください。"
-            }
-
+        case let e as AudioCaptureError: return e.localizedUserMessage
+        case let e as TranscriptionError: return e.localizedUserMessage
+        case let e as SummaryError: return e.localizedUserMessage
+        case let e as RepositoryError: return e.localizedUserMessage
         default:
             return "予期しないエラーが発生しました。問題が続く場合はアプリを再起動してください。"
         }
