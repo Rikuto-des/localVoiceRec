@@ -60,8 +60,9 @@ public enum AudioTapError: Error, CustomStringConvertible {
             UInt8((v >> 8) & 0xff),
             UInt8(v & 0xff),
         ]
-        if bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7f }) {
-            return "'" + String(bytes: bytes, encoding: .ascii)! + "'"
+        if bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7f }),
+           let ascii = String(bytes: bytes, encoding: .ascii) {
+            return "'" + ascii + "'"
         }
         return "raw=\(s)"
     }

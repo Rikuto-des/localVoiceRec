@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import os
 import Contracts
-import TranscriptionKit
 
 /// UI 層からのエラー文表示用ロガー。詳細な enum case 名は os.log にのみ残し、
 /// `lastError` には日本語の actionable メッセージだけを入れる方針。
@@ -464,9 +463,15 @@ public final class AppViewModel {
             async let summaryAsync = repository.loadSummary(for: recording.id)
             let loadedSegments = try await segmentsAsync
             let loadedSummary = try await summaryAsync
+            // X2.1: TOCTOU ガード — 並行ロード中にユーザーが別録音を選び直したら、
+            // 後着の結果を反映しない (別録音の segments/summary が出てしまう問題を防止)。
+            // transcribeRecording / summarizeRecording 内の同種ガードと整合。
+            guard selectedRecording?.id == recording.id else { return }
             segments = loadedSegments.sorted { $0.startSec < $1.startSec }
             summaryDocument = loadedSummary
             summaryAvailability = await summary.availability()
+            // availability() 中にも別録音に切り替わった可能性をケア
+            guard selectedRecording?.id == recording.id else { return }
             lastError = nil
 
             // ─── 自動文字起こしトリガ（ユーザー要望: 文字起こしは自動 UX）───

@@ -77,19 +77,23 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
     // MARK: - Init
 
     public init() {
-        var captured: AsyncStream<CaptureState>.Continuation!
-        self.stateStream = AsyncStream<CaptureState>(
+        // X2.5: `var x: AsyncStream<T>.Continuation!` パターンは認知負荷が高いので、
+        // Swift 5.9+ の `AsyncStream.makeStream(of:)` に統一する。
+        let stateStream = AsyncStream<CaptureState>.makeStream(
+            of: CaptureState.self,
             bufferingPolicy: .bufferingNewest(1)
-        ) { captured = $0 }
-        self.stateContinuation = captured
+        )
+        self.stateStream = stateStream.stream
+        self.stateContinuation = stateStream.continuation
         // 初期値を 1 件積んでおく → 初回購読者が現在状態を取得できる
-        captured.yield(.idle)
+        stateStream.continuation.yield(.idle)
 
-        var levelCaptured: AsyncStream<AudioLevelSnapshot>.Continuation!
-        self.levelStream = AsyncStream<AudioLevelSnapshot>(
+        let levelStream = AsyncStream<AudioLevelSnapshot>.makeStream(
+            of: AudioLevelSnapshot.self,
             bufferingPolicy: .bufferingNewest(2)
-        ) { levelCaptured = $0 }
-        self.levelContinuation = levelCaptured
+        )
+        self.levelStream = levelStream.stream
+        self.levelContinuation = levelStream.continuation
 
         // ── スリープ / 復帰の購読 ──
         // NSWorkspace.shared.notificationCenter は OS スリープ前後のイベントを配信する。

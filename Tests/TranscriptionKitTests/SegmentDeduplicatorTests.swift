@@ -1,7 +1,6 @@
 import Foundation
 import Testing
-import Contracts
-@testable import TranscriptionKit
+@testable import Contracts
 
 @Suite("SegmentDeduplicator")
 struct SegmentDeduplicatorTests {
