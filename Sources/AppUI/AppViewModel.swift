@@ -517,7 +517,7 @@ public final class AppViewModel {
             let preDedup = finalized.isEmpty ? collected.sorted { $0.startSec < $1.startSec } : finalized
             // File-based 経路では cross-channel echo を検出してマーク。
             // (Live 経路では全 segment が揃わないため、ここでは適用しない)
-            let toPersist = SegmentDeduplicator.markEchoes(segments: preDedup)
+            let toPersist = CrossChannelEchoMarker.markEchoes(segments: preDedup)
 
             if toPersist.isEmpty {
                 // 完全に何も拾えなかった = 無音か未対応言語の可能性。既存データは消さない。

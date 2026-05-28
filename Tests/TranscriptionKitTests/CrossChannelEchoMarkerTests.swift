@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Contracts
 
-@Suite("SegmentDeduplicator")
-struct SegmentDeduplicatorTests {
+@Suite("CrossChannelEchoMarker")
+struct CrossChannelEchoMarkerTests {
 
     private static let rid = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
 
@@ -35,7 +35,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 1.0, end: 4.0, text: "皆さんこんばんは。今日は夜食を作ります。", id: micID),
             Self.seg(source: .system, start: 1.05, end: 4.1, text: "皆さんこんばんは。今日は夜食を作ります。", id: sysID),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         let mic = out.first { $0.id == micID }!
         let sys = out.first { $0.id == sysID }!
         #expect(mic.isLikelyEcho == true)
@@ -50,7 +50,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 3.0, text: "はいはい、指味噌確定これです", id: micID),
             Self.seg(source: .system, start: 0.0, end: 3.0, text: "はいはい、海味噌確定これです"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == micID }!.isLikelyEcho == true)
     }
 
@@ -63,7 +63,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 3.0, text: "今日は天気がいいですね", id: micID),
             Self.seg(source: .system, start: 0.0, end: 3.0, text: "明日は雨が降るそうですよ"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == micID }!.isLikelyEcho == false)
     }
 
@@ -74,7 +74,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 2.0, text: "皆さんこんばんは", id: micID),
             Self.seg(source: .system, start: 10.0, end: 12.0, text: "皆さんこんばんは"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == micID }!.isLikelyEcho == false)
     }
 
@@ -86,7 +86,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 1.0, text: "皆さんこんばんは", id: micID),
             Self.seg(source: .system, start: 0.9, end: 2.0, text: "皆さんこんばんは"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == micID }!.isLikelyEcho == false)
     }
 
@@ -96,7 +96,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0, end: 2, text: "テスト"),
             Self.seg(source: .mic, start: 2, end: 4, text: "テスト"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.allSatisfy { !$0.isLikelyEcho })
     }
 
@@ -106,13 +106,13 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .system, start: 0, end: 2, text: "テスト"),
             Self.seg(source: .system, start: 2, end: 4, text: "テスト"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.allSatisfy { !$0.isLikelyEcho })
     }
 
     @Test("空入力 → 空のまま")
     func emptyInput() {
-        let out = SegmentDeduplicator.markEchoes(segments: [])
+        let out = CrossChannelEchoMarker.markEchoes(segments: [])
         #expect(out.isEmpty)
     }
 
@@ -123,7 +123,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 3.0, text: "皆さんこんばんは"),
             Self.seg(source: .system, start: 0.0, end: 3.0, text: "皆さんこんばんは", id: sysID),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == sysID }!.isLikelyEcho == false)
     }
 
@@ -131,18 +131,18 @@ struct SegmentDeduplicatorTests {
 
     @Test("textSimilarity: 完全一致 = 1.0")
     func similarityExact() {
-        #expect(SegmentDeduplicator.textSimilarity("こんばんは", "こんばんは") == 1.0)
+        #expect(CrossChannelEchoMarker.textSimilarity("こんばんは", "こんばんは") == 1.0)
     }
 
     @Test("textSimilarity: 句読点の差は無視される")
     func similarityPunctuation() {
-        let sim = SegmentDeduplicator.textSimilarity("皆さんこんばんは。", "皆さんこんばんは")
+        let sim = CrossChannelEchoMarker.textSimilarity("皆さんこんばんは。", "皆さんこんばんは")
         #expect(sim == 1.0)
     }
 
     @Test("textSimilarity: 完全に違う文字列は閾値を割る")
     func similarityDifferent() {
-        let sim = SegmentDeduplicator.textSimilarity("おはようございます", "夜食を作っています")
+        let sim = CrossChannelEchoMarker.textSimilarity("おはようございます", "夜食を作っています")
         #expect(sim < 0.7)
     }
 
@@ -160,7 +160,7 @@ struct SegmentDeduplicatorTests {
             segs.append(Self.seg(source: .system, start: start + 0.1, end: end + 0.1, text: base))
         }
         let begin = Date()
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         let elapsed = Date().timeIntervalSince(begin)
         #expect(elapsed < 1.0)
         // mic 全てが echo マークされていることも確認
@@ -178,7 +178,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 4, end: 6, text: "B", id: id2),
             Self.seg(source: .system, start: 8, end: 10, text: "C", id: id3),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.map(\.id) == [id1, id2, id3])
     }
 
@@ -197,7 +197,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 2.0, text: "皆さんこんばんは", id: micID),
             Self.seg(source: .system, start: 1.0, end: 3.0, text: "皆さんこんばんは"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == micID }!.isLikelyEcho == true,
                 "0.5 ちょうど は overlapThreshold に含まれる (>= 比較)")
     }
@@ -211,7 +211,7 @@ struct SegmentDeduplicatorTests {
             Self.seg(source: .mic, start: 0.0, end: 2.0, text: "皆さんこんばんは", id: micID),
             Self.seg(source: .system, start: 1.02, end: 3.02, text: "皆さんこんばんは"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         #expect(out.first { $0.id == micID }!.isLikelyEcho == false,
                 "0.49 (< 0.5) は閾値未満で echo マークされない")
     }
@@ -221,9 +221,9 @@ struct SegmentDeduplicatorTests {
         // 10 文字 vs 10 文字、3 文字異なる → 距離 3 → 類似度 = 1 - 3/10 = 0.7
         let a = "あいうえおかきくけこ"
         let b = "あいうえおかきXYZ" // 末尾 3 文字違い
-        let sim = SegmentDeduplicator.textSimilarity(a, b)
+        let sim = CrossChannelEchoMarker.textSimilarity(a, b)
         #expect(abs(sim - 0.7) < 0.001, "実測類似度 \(sim) ≒ 0.7")
-        #expect(sim >= SegmentDeduplicator.textSimilarityThreshold,
+        #expect(sim >= CrossChannelEchoMarker.textSimilarityThreshold,
                 "0.7 ちょうどは threshold (>=) に含まれる")
     }
 
@@ -233,8 +233,8 @@ struct SegmentDeduplicatorTests {
         // 0.69 ピッタリは整数距離で作れないので、近い値 (0.6 < 0.7) で boundary を確認。
         let a = "あいうえおかきくけこ"
         let b = "あいうえおWXYZ?" // 4 文字違い
-        let sim = SegmentDeduplicator.textSimilarity(a, b)
-        #expect(sim < SegmentDeduplicator.textSimilarityThreshold,
+        let sim = CrossChannelEchoMarker.textSimilarity(a, b)
+        #expect(sim < CrossChannelEchoMarker.textSimilarityThreshold,
                 "実測類似度 \(sim) は 0.7 未満で除外されるべき")
     }
 
@@ -253,7 +253,7 @@ struct SegmentDeduplicatorTests {
             ),
             Self.seg(source: .system, start: 0.5, end: 3.5, text: "皆さんこんばんは。今日は夜食を作ります。"),
         ]
-        let out = SegmentDeduplicator.markEchoes(segments: segs)
+        let out = CrossChannelEchoMarker.markEchoes(segments: segs)
         let mic = out.first { $0.id == micID }!
         #expect(mic.startSec == 0.5)
         #expect(mic.endSec == 3.5)

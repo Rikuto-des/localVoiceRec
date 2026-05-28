@@ -6,7 +6,7 @@ import Contracts
 import ContractsTestSupport
 
 /// `AppViewModel.transcribeRecording` の `emptyTranscriptIDs` 管理と
-/// `SegmentDeduplicator` 適用の検証。
+/// `CrossChannelEchoMarker` 適用の検証。
 @MainActor
 @Suite("AppViewModel — transcribe (empty & dedup)")
 struct AppViewModelTranscribeTests {
@@ -47,7 +47,7 @@ struct AppViewModelTranscribeTests {
     }
 
     @Test("mic + system に同一テキスト yield → mic の isLikelyEcho が true で保存される")
-    func transcribeAppliesSegmentDeduplicatorBeforePersist() async throws {
+    func transcribeAppliesCrossChannelEchoMarkerBeforePersist() async throws {
         let recording = makeRecording()
         // 同一時間帯・同一テキストの mic / system セグメントを並べる
         let micID = UUID()

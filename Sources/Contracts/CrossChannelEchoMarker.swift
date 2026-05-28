@@ -29,7 +29,7 @@ import Contracts
 ///
 /// 1 時間 transcript ≈ 数百セグメント、平均 30 文字 → 全体で数百万 char-ops、
 /// 数十 ms オーダーで完了する（実機 M1 で計測想定）。
-public enum SegmentDeduplicator {
+public enum CrossChannelEchoMarker {
 
     /// 時間 overlap の最低割合（短い方の長さに対する重なり比率）。
     public static let overlapThreshold: Double = 0.5

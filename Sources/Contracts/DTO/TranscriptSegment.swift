@@ -29,7 +29,7 @@ public struct TranscriptSegment: Sendable, Identifiable, Hashable, Codable {
     ///
     /// - 用途: VP/AEC を OFF にしたトレードオフで発生する「同一発話が mic / system 双方に乗る」
     ///   現象を後段で検出し、UI 表示やエクスポートから除外する判断に使う。
-    /// - 判定: post-process (`SegmentDeduplicator.markEchoes`) が時間 overlap + テキスト
+    /// - 判定: post-process (`CrossChannelEchoMarker.markEchoes`) が時間 overlap + テキスト
     ///   類似度で立てる。SpeechAnalyzer 段では常に `false`。
     /// - default あり: 既存テスト / DB マイグレーションを壊さないため。
     public let isLikelyEcho: Bool
