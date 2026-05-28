@@ -66,13 +66,19 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     // MARK: - System notification observers (sleep / wake)
 
-    /// `NSWorkspace.willSleepNotification` 監視トークン。actor 初期化時に install し、
-    /// deinit で remove する。録音中以外は no-op で受け流す。
-    /// notification handler は任意スレッドで呼ばれるため、`Task { await self.handleInterruption(...) }`
-    /// で actor に hop してから状態更新する。
-    private nonisolated(unsafe) var willSleepObserver: NSObjectProtocol?
-    private nonisolated(unsafe) var didWakeObserver: NSObjectProtocol?
-    private let observersLock = NSLock()
+    /// `NSWorkspace.willSleepNotification` / `didWakeNotification` の購読を保持するハンドル。
+    ///
+    /// ## なぜ別 class か
+    /// Swift actor の deinit は actor isolated プロパティに触れない。observer の
+    /// `removeObserver` を deinit で確実に呼ぶには「actor の外側に住むオブジェクト」が必要。
+    /// `SystemNotificationObserverHandle` を別 class として持ち、その class 自身の deinit
+    /// で removeObserver する。actor の release と同時に handle も release されるため、
+    /// クリーンアップは自動 (旧実装の deinit + `NSLock` は不要になった)。
+    ///
+    /// actor isolated な `let` で保持できているのは、`SystemNotificationObserverHandle.init`
+    /// に actor の self を直接渡さず、`WeakActorBox` を経由しているため (`init` 中に
+    /// self を closure capture できない制約の回避)。
+    private let observerHandle: SystemNotificationObserverHandle?
 
     // MARK: - Init
 
@@ -97,46 +103,30 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
         // ── スリープ / 復帰の購読 ──
         // NSWorkspace.shared.notificationCenter は OS スリープ前後のイベントを配信する。
-        // 録音中にスリープに入ると IOProc / AVAudioEngine が暗黙停止し、
-        // 復帰しても自動再開されないことがある (ハードウェア構成にも依存)。
-        // ここで観測し、`interrupted(.systemWillSleep)` に遷移させてユーザーに通知する。
+        // 録音中にスリープに入ると IOProc / AVAudioEngine が暗黙停止し、復帰しても自動再開
+        // されないことがある (ハードウェア構成にも依存)。observer で `interrupted(.systemWillSleep)`
+        // に遷移させてユーザーに通知する。
+        //
+        // observer の closure 内では actor の self を触りたいが、init 中の closure では
+        // self capture できない (actor isolated init 制約)。そこで `WeakActorBox` という
+        // 後付けで self を埋められる小箱を渡しておき、init 末尾で `setValue(self)` する。
         #if canImport(AppKit)
-        let nc = NSWorkspace.shared.notificationCenter
-        let willSleep = nc.addObserver(
-            forName: NSWorkspace.willSleepNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            Task { await self.handleInterruption(reason: .systemWillSleep) }
-        }
-        let didWake = nc.addObserver(
-            forName: NSWorkspace.didWakeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            // 復帰時は自動再開しない方針。UI が `.interrupted` を見て
-            // ユーザーに明示的な操作 (停止 or 新規開始) を促す。
-            Self.logger.info("NSWorkspace.didWakeNotification: 録音は再開しません — ユーザー操作待ち")
-        }
-        observersLock.lock()
-        willSleepObserver = willSleep
-        didWakeObserver = didWake
-        observersLock.unlock()
-        #endif
-    }
-
-    deinit {
-        #if canImport(AppKit)
-        observersLock.lock()
-        let w = willSleepObserver
-        let d = didWakeObserver
-        willSleepObserver = nil
-        didWakeObserver = nil
-        observersLock.unlock()
-        let nc = NSWorkspace.shared.notificationCenter
-        if let w { nc.removeObserver(w) }
-        if let d { nc.removeObserver(d) }
+        let weakBox = WeakActorBox<AudioCaptureServiceImpl>()
+        self.observerHandle = SystemNotificationObserverHandle(
+            onWillSleep: {
+                guard let actor = weakBox.value else { return }
+                Task { await actor.handleInterruption(reason: .systemWillSleep) }
+            },
+            onDidWake: {
+                // 復帰時は自動再開しない方針。UI が `.interrupted` を見て
+                // ユーザーに明示的な操作 (停止 or 新規開始) を促す。
+                Self.logger.info("NSWorkspace.didWakeNotification: 録音は再開しません — ユーザー操作待ち")
+            }
+        )
+        // ここまでで self の全プロパティが初期化済み → self を box に格納できる。
+        weakBox.setValue(self)
+        #else
+        self.observerHandle = nil
         #endif
     }
 
@@ -297,6 +287,10 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     // MARK: - start
 
+    /// 録音を開始する。各 helper が個別のリソース起動を担い、エラー時は
+    /// この本体で roll-back (mic.stop / tap.stop / writer.close) する。
+    /// 行数が長くなりすぎないよう、HW 起動 / writer 準備 / Task 群構築は
+    /// それぞれ専用 helper に切り出している。
     public func start(in outputDirectory: URL, title: String?) async throws -> CaptureSession {
         if active != nil {
             throw AudioCaptureError.alreadyRecording
@@ -308,50 +302,26 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         let resolvedTitle = title ?? Self.defaultTitle(at: now)
 
         // ── 出力ディレクトリ準備
-        // outputDirectory は呼び出し側（ViewModel）が `AppPaths.recordingDirectory(for: id)`
-        // で生成済みの一意ディレクトリ。ここで更に UUID 層を作らない（二重ネスト防止）。
-        do {
-            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-        } catch {
-            let err = AudioCaptureError.outputDirectoryUnavailable(outputDirectory)
-            transition(to: .failed(error: err))
-            throw err
-        }
-        // 録音ファイルは WAV (Linear PCM) で保存する。
+        try prepareOutputDirectory(in: outputDirectory)
         let ext = WAVFileWriter.Format.wav.fileExtension
         let micURL = outputDirectory.appendingPathComponent("mic.\(ext)")
         let systemURL = outputDirectory.appendingPathComponent("system.\(ext)")
 
         // ── MicCapture 起動
-        let mic = MicCapture(bufferSize: 4096)
-        // HW 切替 (AirPods 接続/切断, USB マイク抜き差し) で AVAudioEngine が暗黙停止する。
-        // その瞬間に notification handler が呼ばれるため、actor に hop して状態更新する。
-        mic.onConfigurationChange = { [weak self] in
-            guard let self else { return }
-            Task { await self.handleInterruption(reason: .engineConfigurationChanged) }
-        }
-        let micStream: AsyncStream<AVAudioPCMBuffer>
+        let (mic, micStream): (MicCapture, AsyncStream<AVAudioPCMBuffer>)
         do {
-            micStream = try mic.start()
+            (mic, micStream) = try startMicCapture()
         } catch {
             let err = Self.translate(error)
             transition(to: .failed(error: err))
             throw err
         }
 
-        // ── SystemAudioTap 起動
+        // ── SystemAudioTap 起動 (失敗時は mic を巻き戻す)
         let tap: SystemAudioTap
-        do {
-            tap = try SystemAudioTap()
-        } catch {
-            mic.stop()
-            let err = Self.translate(error)
-            transition(to: .failed(error: err))
-            throw err
-        }
         let systemStream: AsyncStream<AVAudioPCMBuffer>
         do {
-            systemStream = try tap.start()
+            (tap, systemStream) = try startSystemAudioTap()
         } catch {
             mic.stop()
             let err = Self.translate(error)
@@ -359,11 +329,11 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             throw err
         }
 
-        // ── 可逆音声ライタ準備 (Linear PCM / WAV)
-        let micWriter: WAVFileWriter
-        let systemWriter: WAVFileWriter
+        // ── 可逆音声ライタ準備 (失敗時は mic + tap を巻き戻す)
+        let writers: (mic: WAVFileWriter, system: WAVFileWriter)
         do {
-            micWriter = try WAVFileWriter(url: micURL, format: mic.captureFormat)
+            writers = try setupWriters(micURL: micURL, micFormat: mic.captureFormat,
+                                       systemURL: systemURL, systemFormat: tap.captureFormat)
         } catch {
             mic.stop()
             tap.stop()
@@ -371,133 +341,20 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
             transition(to: .failed(error: err))
             throw err
         }
-        do {
-            systemWriter = try WAVFileWriter(url: systemURL, format: tap.captureFormat)
-        } catch {
-            mic.stop()
-            tap.stop()
-            micWriter.close()
-            let err = Self.translate(error)
-            transition(to: .failed(error: err))
-            throw err
-        }
 
-        // ── consumer Tasks (detached) と LevelAccumulator
-        let micAccumulator = LevelAccumulator()
-        let systemAccumulator = LevelAccumulator()
+        // ── Accumulator / Sink / Consumer Tasks
+        // consumer Task は detached で起動し、ハードウェアが止まる (= stream finish) と自然終了する。
+        // helper に切り出さない理由: AsyncStream<AVAudioPCMBuffer> の `sending` 制約で
+        // 別メソッドへの委譲がコンパイルエラーになるため、ここでインライン展開している。
+        let (micAccumulator, systemAccumulator) = setupLevelAccumulators()
+        let micSink = WriterSink(writer: writers.mic, accumulator: micAccumulator)
+        let systemSink = WriterSink(writer: writers.system, accumulator: systemAccumulator)
+        let micTask = Task.detached(priority: .userInitiated) { await Self.consume(stream: micStream, sink: micSink) }
+        let systemTask = Task.detached(priority: .userInitiated) { await Self.consume(stream: systemStream, sink: systemSink) }
 
-        let micSink = WriterSink(writer: micWriter, accumulator: micAccumulator)
-        let systemSink = WriterSink(writer: systemWriter, accumulator: systemAccumulator)
-
-        let micTask = Task.detached(priority: .userInitiated) {
-            await Self.consume(stream: micStream, sink: micSink)
-        }
-        let systemTask = Task.detached(priority: .userInitiated) {
-            await Self.consume(stream: systemStream, sink: systemSink)
-        }
-
-        // ── Level emit task: 100ms ごとに RMS/Peak スナップショットを yield
-        let levelCont = self.levelContinuation
-        let startedAtCopy = now
-        let levelEmitTask = Task.detached(priority: .utility) {
-            // 開始ログ
-            Self.logger.debug("level emit task started")
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                if Task.isCancelled { break }
-                let (mr, mp) = micAccumulator.snapshot()
-                let (sr, sp) = systemAccumulator.snapshot()
-                let elapsed = Date().timeIntervalSince(startedAtCopy)
-                // システム音声が無音閾値を超えた = 実際にキャプチャできている。
-                // この事実を永続化して以降は `.authorized` 扱いにする (UX バグ修正)。
-                if sp >= AudioLevelSnapshot.silenceThreshold {
-                    SystemAudioCaptureFlag.markCaptured()
-                }
-                levelCont.yield(AudioLevelSnapshot(
-                    elapsedSec: elapsed,
-                    micRMS: mr,
-                    micPeak: mp,
-                    systemRMS: sr,
-                    systemPeak: sp
-                ))
-            }
-            Self.logger.debug("level emit task ended")
-        }
-
-        // ── Watchdog task: IOProc が「一度は流れた後に」止まったら .interrupted(.audioFlowStalled)
-        //
-        // 重要: 録音開始直後はシステム音声を再生していないことが多く (会議開始前など)、
-        // callCount は HW から呼ばれていても bytesReceived が 0 のままになる。
-        // 「一度も flow が無かった」状態を「stalled」と誤判定すると、ユーザーが
-        // 録音中だと思って待っている間に `.interrupted` 三角マークが出てしまう。
-        //
-        // 修正後の判定:
-        //   - `hasFlowedOnce` フラグを持ち、bytesReceived > 0 を 1 回でも観測したら true
-        //   - flow が一度も無い間は stall 判定をスキップ (= 単なる「無音待機」とみなす)
-        //   - flow があった後に callCount/bytes が停滞 → 真の HW 切断 / 切替を疑う
-        //
-        // 判定間隔は 2 秒、連続 2 回停滞で fire (約 4 秒以上の停止)。
-        let tapRef = tap
-        let watchdogTask = Task.detached(priority: .utility) { [weak self] in
-            var lastCallCount = tapRef.flowSnapshot().callCount
-            var lastBytes = tapRef.flowSnapshot().bytesReceived
-            var stallStreak = 0
-            var hasFlowedOnce = false
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
-                if Task.isCancelled { break }
-                let snap = tapRef.flowSnapshot()
-                if snap.bytesReceived > 0 {
-                    hasFlowedOnce = true
-                }
-                // 録音中以外 (paused, interrupted など) は判定をスキップしてリセット。
-                let state = await self?.currentState
-                if case .recording = state, hasFlowedOnce {
-                    if snap.callCount == lastCallCount && snap.bytesReceived == lastBytes {
-                        stallStreak += 1
-                    } else {
-                        stallStreak = 0
-                    }
-                    if stallStreak >= 2 {
-                        // 約 4 秒以上カウンタが進まない → HW 切替 / 切断を疑う。
-                        Self.logger.error("Watchdog: IOProc stalled after flow (callCount=\(snap.callCount), bytes=\(snap.bytesReceived))")
-                        await self?.handleInterruption(reason: .audioFlowStalled)
-                        stallStreak = 0
-                    }
-                } else {
-                    stallStreak = 0
-                }
-                lastCallCount = snap.callCount
-                lastBytes = snap.bytesReceived
-            }
-        }
-
-        // ── Disk write watchdog: WriterSink.failureCount が閾値超で .failed に遷移
-        // ディスク満杯 / I/O エラーで write が連続失敗しても録音は無音継続してしまう
-        // 「サイレントフェイル」を観測可能にして、上位 UI が気付けるようにする。
-        let diskFailureThreshold = 5
-        let micSinkRef = micSink
-        let systemSinkRef = systemSink
-        let diskWatchdogTask = Task.detached(priority: .utility) { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
-                if Task.isCancelled { break }
-                let state = await self?.currentState
-                // 録音中 or 中断中以外 (idle/preparing/finalizing/failed) はカウントしない
-                switch state {
-                case .recording, .paused:
-                    break
-                default:
-                    continue
-                }
-                let total = micSinkRef.failureCount + systemSinkRef.failureCount
-                if total > diskFailureThreshold {
-                    Self.logger.error("Disk watchdog: write failures total=\(total), promoting to .failed")
-                    await self?.handleDiskWriteFailure(failureCount: total)
-                    break
-                }
-            }
-        }
+        // ── Level emit task / watchdog 群
+        let levelEmitTask = startLevelEmitTask(startedAt: now, micAccumulator: micAccumulator, systemAccumulator: systemAccumulator)
+        let (watchdogTask, diskWatchdogTask) = startWatchdogTasks(tap: tap, micSink: micSink, systemSink: systemSink)
 
         // ── ActiveSession を構築
         let session = CaptureSession(
@@ -521,14 +378,205 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
         )
         // 新セッション開始 → 旧 flow スナップショットを破棄
         lastSystemFlow = nil
-        // C5: 録音開始ログを「1 行 JSON 風」に詳細化。トラブルシュート時に
-        // session id / フォーマット / 既定出力デバイスがログだけで把握できるようにする。
-        let outputName = Self.currentDefaultOutputDeviceName() ?? "<unknown>"
-        let micFmt = Self.describeFormat(mic.captureFormat)
-        let sysFmt = Self.describeFormat(tap.captureFormat)
-        Self.logger.info("start session: id=\(sessionID.uuidString, privacy: .public) micFormat=\(micFmt, privacy: .public) sysFormat=\(sysFmt, privacy: .public) output=\(outputName, privacy: .public)")
+        Self.logStartSession(sessionID: sessionID, micFormat: mic.captureFormat, systemFormat: tap.captureFormat)
         transition(to: .recording(startedAt: now))
         return session
+    }
+
+    /// 録音開始ログを「1 行 JSON 風」に出力する (C5)。
+    /// トラブルシュート時に session id / フォーマット / 既定出力デバイスがログだけで把握できるよう、
+    /// session id + mic/system format + default output device 名を 1 行にまとめる。
+    private nonisolated static func logStartSession(
+        sessionID: UUID, micFormat: AVAudioFormat, systemFormat: AVAudioFormat
+    ) {
+        let outputName = currentDefaultOutputDeviceName() ?? "<unknown>"
+        let micFmt = describeFormat(micFormat)
+        let sysFmt = describeFormat(systemFormat)
+        logger.info("start session: id=\(sessionID.uuidString, privacy: .public) micFormat=\(micFmt, privacy: .public) sysFormat=\(sysFmt, privacy: .public) output=\(outputName, privacy: .public)")
+    }
+
+    // MARK: - start helpers
+
+    /// 出力ディレクトリを作成する。失敗時は `.failed` 遷移後 `outputDirectoryUnavailable` を投げる。
+    /// `outputDirectory` は呼び出し側 (ViewModel) が `AppPaths.recordingDirectory(for: id)`
+    /// で生成済みの一意ディレクトリ。ここで更に UUID 層を作らない (二重ネスト防止)。
+    private func prepareOutputDirectory(in outputDirectory: URL) throws {
+        do {
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        } catch {
+            let err = AudioCaptureError.outputDirectoryUnavailable(outputDirectory)
+            transition(to: .failed(error: err))
+            throw err
+        }
+    }
+
+    /// `MicCapture` を起動し、PCM ストリームを返す。HW 設定変更時の
+    /// `onConfigurationChange` も併せて install する。
+    /// 失敗時は raw error を re-throw する (呼び出し側で `translate` + state 遷移)。
+    ///
+    /// `nonisolated`: 返り値の `AsyncStream<AVAudioPCMBuffer>` を呼び出し側で
+    /// detached Task に渡せるよう、self-isolated region を作らないようにしている
+    /// (Swift 6 strict concurrency)。`onConfigurationChange` は weak self capture で安全。
+    private nonisolated func startMicCapture() throws -> (MicCapture, AsyncStream<AVAudioPCMBuffer>) {
+        let mic = MicCapture(bufferSize: 4096)
+        // HW 切替 (AirPods 接続/切断, USB マイク抜き差し) で AVAudioEngine が暗黙停止する。
+        // その瞬間に notification handler が呼ばれるため、actor に hop して状態更新する。
+        mic.onConfigurationChange = { [weak self] in
+            guard let self else { return }
+            Task { await self.handleInterruption(reason: .engineConfigurationChanged) }
+        }
+        let stream = try mic.start()
+        return (mic, stream)
+    }
+
+    /// `SystemAudioTap` を生成し起動して、PCM ストリームを返す。
+    /// 失敗時は raw error を re-throw する (呼び出し側で mic.stop / translate / state 遷移)。
+    ///
+    /// `nonisolated`: `startMicCapture` と同様に、返り値の stream を detached Task に渡せるよう
+    /// self-isolated region を作らない設計にしている。
+    private nonisolated func startSystemAudioTap() throws -> (SystemAudioTap, AsyncStream<AVAudioPCMBuffer>) {
+        let tap = try SystemAudioTap()
+        let stream = try tap.start()
+        return (tap, stream)
+    }
+
+    /// WAV writer を mic / system 用に 2 つ作る。
+    /// system writer 作成に失敗した場合のみ mic writer を close する内部 roll-back を持つが、
+    /// mic.stop / tap.stop は呼び出し側で行う (helper は HW を知らない)。
+    private func setupWriters(
+        micURL: URL, micFormat: AVAudioFormat,
+        systemURL: URL, systemFormat: AVAudioFormat
+    ) throws -> (mic: WAVFileWriter, system: WAVFileWriter) {
+        let micWriter = try WAVFileWriter(url: micURL, format: micFormat)
+        do {
+            let systemWriter = try WAVFileWriter(url: systemURL, format: systemFormat)
+            return (micWriter, systemWriter)
+        } catch {
+            // system writer 作成失敗 → 既に作った mic writer は close して file handle を解放
+            micWriter.close()
+            throw error
+        }
+    }
+
+    /// レベルメーター用の `LevelAccumulator` を mic / system 用に 2 つ作る。
+    /// 副作用なしの純粋なファクトリ。
+    private func setupLevelAccumulators() -> (mic: LevelAccumulator, system: LevelAccumulator) {
+        return (LevelAccumulator(), LevelAccumulator())
+    }
+
+    /// 100ms ごとに RMS/Peak スナップショットを `levelContinuation` に yield する Task を起動する。
+    /// システム音声が無音閾値を超えたら `SystemAudioCaptureFlag.markCaptured()` を呼ぶ (UX バグ保険)。
+    private func startLevelEmitTask(
+        startedAt: Date,
+        micAccumulator: LevelAccumulator,
+        systemAccumulator: LevelAccumulator
+    ) -> Task<Void, Never> {
+        let levelCont = self.levelContinuation
+        return Task.detached(priority: .utility) {
+            Self.logger.debug("level emit task started")
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                if Task.isCancelled { break }
+                let (mr, mp) = micAccumulator.snapshot()
+                let (sr, sp) = systemAccumulator.snapshot()
+                let elapsed = Date().timeIntervalSince(startedAt)
+                // システム音声が無音閾値を超えた = 実際にキャプチャできている。
+                // この事実を永続化して以降は `.authorized` 扱いにする (UX バグ修正)。
+                if sp >= AudioLevelSnapshot.silenceThreshold {
+                    SystemAudioCaptureFlag.markCaptured()
+                }
+                levelCont.yield(AudioLevelSnapshot(
+                    elapsedSec: elapsed,
+                    micRMS: mr,
+                    micPeak: mp,
+                    systemRMS: sr,
+                    systemPeak: sp
+                ))
+            }
+            Self.logger.debug("level emit task ended")
+        }
+    }
+
+    /// HW flow watchdog (IOProc stall 検知) と disk write watchdog の Task を 2 つ起動する。
+    ///
+    /// ## HW flow watchdog
+    /// - 録音開始直後はシステム音声を再生していないことが多く (会議開始前など)、
+    ///   callCount は HW から呼ばれていても bytesReceived が 0 のまま。
+    ///   「一度も flow が無かった」状態を「stalled」と誤判定すると、ユーザーが
+    ///   録音中だと思って待っている間に `.interrupted` 三角マークが出てしまう。
+    /// - `hasFlowedOnce` フラグを持ち、bytesReceived > 0 を 1 回でも観測したら true
+    /// - flow があった後に callCount/bytes が停滞 → 真の HW 切断 / 切替を疑う
+    /// - 判定間隔 2 秒、連続 2 回停滞で fire (約 4 秒以上の停止)
+    ///
+    /// ## Disk watchdog
+    /// - `WriterSink.failureCount` が閾値超で `.failed(.diskWriteFailure)` に遷移
+    /// - ディスク満杯 / I/O エラーのサイレントフェイルを観測可能にする
+    private func startWatchdogTasks(
+        tap: SystemAudioTap,
+        micSink: WriterSink,
+        systemSink: WriterSink
+    ) -> (flow: Task<Void, Never>, disk: Task<Void, Never>) {
+        // ── HW flow watchdog
+        let tapRef = tap
+        let flowTask = Task.detached(priority: .utility) { [weak self] in
+            var lastCallCount = tapRef.flowSnapshot().callCount
+            var lastBytes = tapRef.flowSnapshot().bytesReceived
+            var stallStreak = 0
+            var hasFlowedOnce = false
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+                if Task.isCancelled { break }
+                let snap = tapRef.flowSnapshot()
+                if snap.bytesReceived > 0 {
+                    hasFlowedOnce = true
+                }
+                // 録音中以外 (paused, interrupted など) は判定をスキップしてリセット。
+                let state = await self?.currentState
+                if case .recording = state, hasFlowedOnce {
+                    if snap.callCount == lastCallCount && snap.bytesReceived == lastBytes {
+                        stallStreak += 1
+                    } else {
+                        stallStreak = 0
+                    }
+                    if stallStreak >= 2 {
+                        Self.logger.error("Watchdog: IOProc stalled after flow (callCount=\(snap.callCount), bytes=\(snap.bytesReceived))")
+                        await self?.handleInterruption(reason: .audioFlowStalled)
+                        stallStreak = 0
+                    }
+                } else {
+                    stallStreak = 0
+                }
+                lastCallCount = snap.callCount
+                lastBytes = snap.bytesReceived
+            }
+        }
+
+        // ── Disk write watchdog
+        let diskFailureThreshold = 5
+        let micSinkRef = micSink
+        let systemSinkRef = systemSink
+        let diskTask = Task.detached(priority: .utility) { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+                if Task.isCancelled { break }
+                let state = await self?.currentState
+                // 録音中 or 中断中以外 (idle/preparing/finalizing/failed) はカウントしない
+                switch state {
+                case .recording, .paused:
+                    break
+                default:
+                    continue
+                }
+                let total = micSinkRef.failureCount + systemSinkRef.failureCount
+                if total > diskFailureThreshold {
+                    Self.logger.error("Disk watchdog: write failures total=\(total), promoting to .failed")
+                    await self?.handleDiskWriteFailure(failureCount: total)
+                    break
+                }
+            }
+        }
+
+        return (flowTask, diskTask)
     }
 
     // MARK: - pause / resume
@@ -766,6 +814,89 @@ public actor AudioCaptureServiceImpl: AudioCaptureService {
 
     private static func defaultTitle(at date: Date) -> String {
         return "Meeting \(defaultTitleFormatter.string(from: date))"
+    }
+}
+
+// MARK: - WeakActorBox
+
+/// `init` 中に self を closure capture できない actor の制約を回避するための小箱。
+///
+/// 使い方:
+/// ```
+/// let box = WeakActorBox<MyActor>()
+/// let observer = SomeObserver(callback: { box.value?.doSomething() })  // self を直接 capture しない
+/// box.setValue(self)  // 全プロパティ初期化後に self をセット
+/// ```
+///
+/// `value` は weak で保持する → actor の release を妨げない。
+final class WeakActorBox<T: AnyObject>: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var _value: T?
+
+    init() {}
+
+    var value: T? {
+        lock.lock(); defer { lock.unlock() }
+        return _value
+    }
+
+    func setValue(_ value: T) {
+        lock.lock()
+        _value = value
+        lock.unlock()
+    }
+}
+
+// MARK: - SystemNotificationObserverHandle
+
+/// `NSWorkspace.willSleepNotification` / `didWakeNotification` の購読を保持するハンドル。
+///
+/// なぜ別 class に切り出すか:
+/// - `AudioCaptureServiceImpl` は actor。actor の deinit は actor isolated プロパティに
+///   触れないため、observer の removeObserver を deinit で確実に呼ぶには
+///   「actor isolation の外にある別オブジェクト」が必要になる。
+/// - actor が `let observerHandle: SystemNotificationObserverHandle?` を保持し、
+///   actor の release と共にこの handle も release → handle 自身の deinit で
+///   removeObserver される、というライフサイクルにする。
+///
+/// `@unchecked Sendable`: 中身の `[NSObjectProtocol]` は init で 1 度だけ書いて以降は読み取り専用
+/// (deinit でのみ消費)。closure は escape 後 main queue で呼ばれる。
+final class SystemNotificationObserverHandle: @unchecked Sendable {
+    #if canImport(AppKit)
+    private let tokens: [NSObjectProtocol]
+    #endif
+
+    init(
+        onWillSleep: @escaping @Sendable () -> Void,
+        onDidWake: @escaping @Sendable () -> Void
+    ) {
+        #if canImport(AppKit)
+        let nc = NSWorkspace.shared.notificationCenter
+        let willSleep = nc.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            onWillSleep()
+        }
+        let didWake = nc.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            onDidWake()
+        }
+        self.tokens = [willSleep, didWake]
+        #endif
+    }
+
+    deinit {
+        #if canImport(AppKit)
+        let nc = NSWorkspace.shared.notificationCenter
+        for t in tokens {
+            nc.removeObserver(t)
+        }
+        #endif
     }
 }
 
