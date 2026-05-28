@@ -62,7 +62,7 @@ let package = Package(
         // ─── UI ───
         .target(
             name: "AppUI",
-            dependencies: ["Contracts", "ContractsTestSupport", "TranscriptionKit"],
+            dependencies: ["Contracts", "ContractsTestSupport", "TranscriptionKit", "SummaryKit"],
             path: "Sources/AppUI"
         ),
 

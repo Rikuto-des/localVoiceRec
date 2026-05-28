@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import Contracts
+import SummaryKit
 
 /// UI 層からのエラー文表示用ロガー。詳細な enum case 名は os.log にのみ残し、
 /// `lastError` には日本語の actionable メッセージだけを入れる方針。
@@ -18,10 +19,16 @@ public enum RecordingStatus: Sendable, Hashable {
     case failed            // 直近の試行が失敗
 }
 
-/// アプリ全体の UI 状態を保持する ViewModel。
+/// アプリ全体の UI 状態を保持する ViewModel（オーケストレータ）。
 ///
-/// すべてのサービス呼び出しを ViewModel 内に閉じ込め、View からは intent メソッド経由で
-/// 操作する。`@Observable` により SwiftUI が自動的に変更を追跡する。
+/// Z1 で god object を 3 つの sub-state に分解した:
+/// - `RecordingListState` … list / search / refreshList / status (`ViewModels/RecordingListState.swift`)
+/// - `AutoPipelineCoordinator` … 録音停止 → transcribe → summary 自動連結 (`ViewModels/AutoPipelineCoordinator.swift`)
+/// - `DiagnosticsState` … 権限 / locale / 要約 availability (`ViewModels/DiagnosticsState.swift`)
+/// `hasSubstantiveContent` は `SummaryKit.SubstantiveContentChecker` に移設済み。
+///
+/// 既存 View からの API (`viewModel.recordings`, `viewModel.startRecording()` 等) は
+/// 変更しない。本クラスでは sub-state への薄い委譲プロパティ + intent メソッドを提供する。
 ///
 /// 設計上の重要事項:
 /// - `MainActor` に固定。UI スレッドからのみアクセス可能。
@@ -36,9 +43,16 @@ public final class AppViewModel {
     private let transcription: any TranscriptionService
     private let summary: any SummaryService
 
-    // ─── 表示用 state ───
+    // ─── Sub-states (Z1 分解) ───
+    /// 録音一覧 / 検索 / ステータスキャッシュ。
+    private let listState: RecordingListState
+    /// 自動パイプライン (transcribe → summary) coordinator。
+    private var autoPipeline: AutoPipelineCoordinator!
+    /// 診断パネル用 state。
+    private let diagnosticsState: DiagnosticsState
+
+    // ─── 表示用 state (本クラスに残るもの) ───
     public private(set) var captureState: CaptureState = .idle
-    public private(set) var recordings: [Recording] = []
     public private(set) var selectedRecording: Recording?
     public private(set) var segments: [TranscriptSegment] = []
     public private(set) var summaryDocument: SummaryDocument?
@@ -68,22 +82,18 @@ public final class AppViewModel {
         return summarizingIDs.contains(id)
     }
 
-    /// 診断パネル用の情報（権限 / 利用可能 locale / 要約サービス状況）。
-    public private(set) var diagnostics: DiagnosticsInfo = .empty
+    // ─── Sub-state delegating properties (View 互換 API) ───
+    /// `RecordingListState.recordings` への薄いラッパ。
+    public var recordings: [Recording] { listState.recordings }
+    /// `RecordingListState.recordingStatuses` への薄いラッパ。
+    public var recordingStatuses: [UUID: RecordingStatus] { listState.recordingStatuses }
+    /// `DiagnosticsState.diagnostics` への薄いラッパ。
+    public var diagnostics: DiagnosticsInfo { diagnosticsState.diagnostics }
 
     /// `subscribeToCaptureState()` で開始した監視タスク。
     private var stateSubscriptionTask: Task<Void, Never>?
     /// `subscribeToAudioLevels()` で開始した監視タスク。
     private var audioLevelsTask: Task<Void, Never>?
-    /// 進行中の自動パイプライン (録音 ID → Task)
-    private var pipelineTasks: [UUID: Task<Void, Never>] = [:]
-    /// `select` 経由で 1 回だけ自動 transcribe を試行済みの録音 ID。
-    /// 手動「文字起こしを実行」が押されたらクリアして再試行を許可する。
-    private var autoTranscribeAttempted: Set<UUID> = []
-
-    /// search debounce 用の進行中タスク。次のキーストロークで cancel される。
-    /// A12: 毎キーストローク fetch で SwiftData が刻まれる問題への対策。
-    private var pendingSearchTask: Task<Void, Never>?
 
     /// 録音中のレベルスナップショットの rolling buffer。
     /// **メニューバーポップアップを閉じても継続して更新される** ように、
@@ -95,8 +105,6 @@ public final class AppViewModel {
     /// 文字起こしが「無音/未検出」で終わった録音 ID。
     /// 失敗 (lastError) とは別の状態として UI で区別する。
     public private(set) var emptyTranscriptIDs: Set<UUID> = []
-    /// 一覧表示用の、録音 ID ごとの状態キャッシュ（refreshList で更新）。
-    public private(set) var recordingStatuses: [UUID: RecordingStatus] = [:]
 
     public init(
         capture: any AudioCaptureService,
@@ -108,6 +116,24 @@ public final class AppViewModel {
         self.repository = repository
         self.transcription = transcription
         self.summary = summary
+        self.listState = RecordingListState(repository: repository)
+        self.diagnosticsState = DiagnosticsState(
+            capture: capture,
+            transcription: transcription,
+            summary: summary
+        )
+        // AutoPipelineCoordinator は self メソッドを weak 参照する hooks で組み立てる。
+        self.autoPipeline = AutoPipelineCoordinator(
+            hooks: .init(
+                transcribe: { [weak self] rec in await self?.transcribeRecording(rec) },
+                summarize: { [weak self] rec, segs in await self?.summarizeRecording(rec, segments: segs) },
+                loadSegments: { [weak self] id in
+                    guard let self else { return [] }
+                    return (try? await self.repository.loadSegments(for: id)) ?? []
+                },
+                refreshList: { [weak self] in await self?.refreshList() }
+            )
+        )
     }
 
     // 注: `Task` の自動キャンセルは `subscribeToCaptureState()` 再呼び出し時の
@@ -134,6 +160,15 @@ public final class AppViewModel {
         default:
             return "予期しないエラーが発生しました。問題が続く場合はアプリを再起動してください。"
         }
+    }
+
+    // MARK: - 自動要約発火条件 (テスト互換シム)
+
+    /// 旧 `static func hasSubstantiveContent` のテスト互換シム。
+    /// 実体は `SummaryKit.SubstantiveContentChecker.isSubstantive(segments:)` に移設済み。
+    /// View 層は本関数を呼ばない (閾値の知識は SummaryKit に集約)。
+    static func hasSubstantiveContent(segments: [TranscriptSegment]) -> Bool {
+        SubstantiveContentChecker.isSubstantive(segments: segments)
     }
 
     // MARK: - State subscription
@@ -259,50 +294,10 @@ public final class AppViewModel {
             // 診断パネルの systemFlow も最新化しておく
             await refreshDiagnostics()
             // 自動で文字起こし → 要約のパイプラインを開始（fire-and-forget）
-            runAutoPipeline(for: recording)
+            autoPipeline.run(for: recording)
         } catch {
             lastError = userMessage(for: error, context: "stopRecording")
         }
-    }
-
-    /// 自動要約を発火させるかの判定。
-    ///
-    /// Foundation Models (on-device 3B) は入力が極端に薄いと、もっともらしい内容を
-    /// 捏造する (ハルシネーション)。例: 「うん」「あ」のような相槌だけの transcript で
-    /// 「予算編成」「コスト削減」等の架空の議論内容を生成する。
-    ///
-    /// 自動要約は実コンテンツが一定量ある場合に限定する。閾値は実利テスト由来で
-    /// **空白除去後 60 文字以上 かつ 5 セグメント以上** とする。これ未満の場合は
-    /// 手動「要約を再生成」ボタンを押した時のみ要約する (ユーザーが明示的に判断)。
-    static func hasSubstantiveContent(segments: [TranscriptSegment]) -> Bool {
-        guard segments.count >= 5 else { return false }
-        let totalChars = segments
-            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).count }
-            .reduce(0, +)
-        return totalChars >= 60
-    }
-
-    /// 録音停止後（および select で空 segments のとき）に呼ばれる、
-    /// 文字起こし→要約の自動パイプライン。バックグラウンドで走る。
-    private func runAutoPipeline(for recording: Recording) {
-        pipelineTasks[recording.id]?.cancel()
-        let task = Task { @MainActor [weak self] in
-            // cancel パスでも必ずエントリ掃除 + 一覧バッジ更新
-            defer {
-                self?.pipelineTasks.removeValue(forKey: recording.id)
-                Task { @MainActor [weak self] in await self?.refreshList() }
-            }
-            guard let self else { return }
-            await self.transcribeRecording(recording)
-            guard !Task.isCancelled else { return }
-            // 要約は実コンテンツが一定量ある場合のみ自動発火する (ハルシネーション防止)。
-            // 薄い入力でも手動「要約を再生成」ボタンからは実行可能。
-            let saved = (try? await self.repository.loadSegments(for: recording.id)) ?? []
-            if Self.hasSubstantiveContent(segments: saved) {
-                await self.summarizeRecording(recording, segments: saved)
-            }
-        }
-        pipelineTasks[recording.id] = task
     }
 
     public func pauseRecording() async {
@@ -327,30 +322,18 @@ public final class AppViewModel {
 
     // MARK: - Intents: List / Detail
 
+    /// 進行中フラグのスナップショットを `RecordingListState` 用に組む。
+    private func currentInProgressFlags() -> RecordingListState.InProgressFlags {
+        .init(
+            transcribingIDs: transcribingIDs,
+            summarizingIDs: summarizingIDs,
+            emptyTranscriptIDs: emptyTranscriptIDs
+        )
+    }
+
     public func refreshList() async {
         do {
-            // N+1 を避けるため、録音 + segments/summary の存在フラグを 1 fetch で取得する。
-            let rows = try await repository.listWithStatus(limit: nil, offset: nil)
-            var newRecordings: [Recording] = []
-            newRecordings.reserveCapacity(rows.count)
-            var map: [UUID: RecordingStatus] = [:]
-            for row in rows {
-                let r = row.recording
-                newRecordings.append(r)
-                if transcribingIDs.contains(r.id) {
-                    map[r.id] = .transcribing
-                } else if summarizingIDs.contains(r.id) {
-                    map[r.id] = .summarizing
-                } else if !row.hasSegments {
-                    map[r.id] = emptyTranscriptIDs.contains(r.id) ? .emptyTranscript : .pending
-                } else if row.hasSummary {
-                    map[r.id] = .completed
-                } else {
-                    map[r.id] = .transcribed
-                }
-            }
-            recordings = newRecordings
-            recordingStatuses = map
+            try await listState.refresh(flags: currentInProgressFlags())
             lastError = nil
         } catch {
             lastError = userMessage(for: error, context: "refreshList")
@@ -359,37 +342,30 @@ public final class AppViewModel {
 
     /// 一覧表示用に、指定録音の現在状態を返す。
     public func status(for id: UUID) -> RecordingStatus {
-        if transcribingIDs.contains(id) { return .transcribing }
-        if summarizingIDs.contains(id) { return .summarizing }
-        if emptyTranscriptIDs.contains(id), recordingStatuses[id] == nil {
-            return .emptyTranscript
-        }
-        return recordingStatuses[id] ?? .pending
+        listState.status(for: id, flags: currentInProgressFlags())
     }
 
     /// 入力デバウンス付きの検索エントリポイント。
     ///
     /// A12: `.searchable` が毎キーストロークで `search(query:)` を直接叩く UX 問題に対応。
-    /// 進行中の検索タスクをキャンセルし、300ms 待ってからスナップショットされた最新の
-    /// クエリで実行する。空文字なら `refreshList` を呼ぶ。
+    /// 実装は `RecordingListState.searchDebounced` に委譲。
     public func searchDebounced(query: String) {
-        pendingSearchTask?.cancel()
-        let trimmed = query
-        pendingSearchTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(300))
-            if Task.isCancelled { return }
-            guard let self else { return }
-            if trimmed.isEmpty {
-                await self.refreshList()
-            } else {
-                await self.search(query: trimmed)
+        listState.searchDebounced(
+            query: query,
+            flagsProvider: { [weak self] in
+                self?.currentInProgressFlags() ?? .init(
+                    transcribingIDs: [], summarizingIDs: [], emptyTranscriptIDs: []
+                )
+            },
+            onError: { [weak self] error in
+                self?.lastError = self?.userMessage(for: error, context: "searchDebounced")
             }
-        }
+        )
     }
 
     public func search(query: String) async {
         do {
-            recordings = try await repository.search(query: query)
+            try await listState.search(query: query)
             lastError = nil
         } catch {
             lastError = userMessage(for: error, context: "search")
@@ -422,17 +398,17 @@ public final class AppViewModel {
             //   2. すでに進行中のパイプラインが無い
             //   3. このセッションでまだ自動試行していない（無限ループ防止）
             if loadedSegments.isEmpty,
-               pipelineTasks[recording.id] == nil,
-               !autoTranscribeAttempted.contains(recording.id) {
-                autoTranscribeAttempted.insert(recording.id)
-                runAutoPipeline(for: recording)
+               !autoPipeline.isRunning(for: recording.id),
+               !autoPipeline.hasAttemptedAutoTranscribe(for: recording.id) {
+                autoPipeline.markAutoTranscribeAttempted(for: recording.id)
+                autoPipeline.run(for: recording)
             } else if !loadedSegments.isEmpty,
                       loadedSummary == nil,
                       case .available = summaryAvailability,
                       summarizingIDs.contains(recording.id) == false,
-                      !autoTranscribeAttempted.contains(recording.id) {
+                      !autoPipeline.hasAttemptedAutoTranscribe(for: recording.id) {
                 // segments はあるが要約だけ無い → 要約のみ自動実行
-                autoTranscribeAttempted.insert(recording.id)
+                autoPipeline.markAutoTranscribeAttempted(for: recording.id)
                 let target = loadedSegments.sorted { $0.startSec < $1.startSec }
                 Task { @MainActor [weak self] in
                     await self?.summarizeRecording(recording, segments: target)
@@ -465,7 +441,7 @@ public final class AppViewModel {
     public func transcribeRecording(_ recording: Recording, locale: Locale? = nil) async {
         guard !transcribingIDs.contains(recording.id) else { return }
         // 手動で押されたら自動試行フラグはクリア（再試行を解禁）
-        autoTranscribeAttempted.remove(recording.id)
+        autoPipeline.clearAttempted(for: recording.id)
         transcribingIDs.insert(recording.id)
         defer { transcribingIDs.remove(recording.id) }
 
@@ -662,18 +638,9 @@ public final class AppViewModel {
 
     /// 診断情報（権限・locale・要約 availability）を取得し直す。
     /// View 側の `.task` で初回 + 「更新」ボタンで再取得する。
+    /// 実装は `DiagnosticsState.refresh()` に委譲。
     public func refreshDiagnostics() async {
-        let auth = await capture.authorizationStatus()
-        let locales = await transcription.installedLocales()
-        let summary = await self.summary.availability()
-        let systemFlow = await capture.systemFlowSnapshot()
-        diagnostics = DiagnosticsInfo(
-            micAuthorization: auth.microphone,
-            systemAudioAuthorization: auth.systemAudio,
-            installedLocales: locales.map(\.identifier),
-            summaryAvailability: summary,
-            systemFlow: systemFlow
-        )
+        await diagnosticsState.refresh()
     }
 
     // MARK: - Intents: Bulk retry
@@ -728,38 +695,4 @@ public final class AppViewModel {
     }
 }
 
-// MARK: - Diagnostics
-
-/// 診断パネルで表示する情報のスナップショット。
-public struct DiagnosticsInfo: Sendable, Equatable {
-    public let micAuthorization: AudioAuthorizationStatus.State
-    public let systemAudioAuthorization: AudioAuthorizationStatus.State
-    /// `Locale.identifier` の文字列配列（例: `"ja_JP"`, `"en_US"`）。
-    public let installedLocales: [String]
-    public let summaryAvailability: SummaryAvailability
-    /// SystemAudioTap の IOProc カウンタ。録音中はライブ値、停止後は最終スナップショット。
-    /// SystemAudioTap が存在しない実装 (Fake 等) では `nil`。
-    public let systemFlow: SystemFlowSnapshot?
-
-    public init(
-        micAuthorization: AudioAuthorizationStatus.State,
-        systemAudioAuthorization: AudioAuthorizationStatus.State,
-        installedLocales: [String],
-        summaryAvailability: SummaryAvailability,
-        systemFlow: SystemFlowSnapshot? = nil
-    ) {
-        self.micAuthorization = micAuthorization
-        self.systemAudioAuthorization = systemAudioAuthorization
-        self.installedLocales = installedLocales
-        self.summaryAvailability = summaryAvailability
-        self.systemFlow = systemFlow
-    }
-
-    public static let empty = DiagnosticsInfo(
-        micAuthorization: .notDetermined,
-        systemAudioAuthorization: .notDetermined,
-        installedLocales: [],
-        summaryAvailability: .available,
-        systemFlow: nil
-    )
-}
+// `DiagnosticsInfo` 構造体は Z1 で `Sources/AppUI/ViewModels/DiagnosticsState.swift` に移動済み。
