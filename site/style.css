@@ -1,19 +1,20 @@
 /* ─────────────────────────────────────────────────────────────
    localVoiceRec — distribution site
-   Style: Glassmorphism Aurora
+   Style: Charcoal + monochrome teal accent
    ───────────────────────────────────────────────────────────── */
 
 :root {
-  /* Base canvas */
-  --bg:           #0B0820;
-  --bg-alt:       #1A1240;
-  --bg-deep:      #06041A;
+  /* Base canvas — neutral deep charcoal (no purple tint) */
+  --bg:           #0D1115;
+  --bg-alt:       #161A20;
+  --bg-deep:      #08090C;
 
-  /* Aurora glow palette */
-  --aurora-1: #FF6FD8;  /* pink   */
-  --aurora-2: #3D5AFE;  /* blue   */
-  --aurora-3: #3AFFF0;  /* cyan   */
-  --aurora-4: #A569FF;  /* violet */
+  /* Accent palette — single hue (teal), 4 tints for tonal gradients only.
+     既存コードが --aurora-* を参照しているため、変数名は据え置きで値だけ単色化。 */
+  --aurora-1: #5EEAD4;  /* teal-300 (highlight) */
+  --aurora-2: #2DD4BF;  /* teal-400 (mid)       */
+  --aurora-3: #14B8A6;  /* teal-500 (deep)      */
+  --aurora-4: #0F766E;  /* teal-700 (deepest)   */
 
   /* Text */
   --text:    #FFFFFF;
@@ -22,18 +23,18 @@
   --text-on-dark: #FFFFFF;
 
   /* Glass */
-  --glass-bg:     rgba(255, 255, 255, 0.08);
-  --glass-bg-2:   rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.18);
-  --glass-border-soft: rgba(255, 255, 255, 0.10);
+  --glass-bg:     rgba(255, 255, 255, 0.06);
+  --glass-bg-2:   rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-soft: rgba(255, 255, 255, 0.08);
 
-  /* Accent */
-  --accent:       #3AFFF0;
-  --accent-hover: #7CFFF4;
-  --accent-link:  #A0D9FF;
+  /* Single accent (used sparingly: CTA / brand / em / links) */
+  --accent:       #2DD4BF;
+  --accent-hover: #5EEAD4;
+  --accent-link:  #5EEAD4;
 
-  --separator:       rgba(255, 255, 255, 0.14);
-  --separator-light: rgba(255, 255, 255, 0.08);
+  --separator:       rgba(255, 255, 255, 0.10);
+  --separator-light: rgba(255, 255, 255, 0.06);
 
   --max:      980px;
   --max-wide: 1200px;
@@ -42,10 +43,11 @@
                "Inter", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
   --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
 
-  --shadow-soft: 0 10px 40px -10px rgba(61, 90, 254, 0.35),
-                 0 2px 12px -2px rgba(0, 0, 0, 0.4);
-  --shadow-card: 0 20px 60px -20px rgba(165, 105, 255, 0.45),
-                 0 6px 20px -6px rgba(0, 0, 0, 0.5);
+  /* シャドウもチャコール基調 + 薄いティールグロー */
+  --shadow-soft: 0 10px 40px -10px rgba(45, 212, 191, 0.18),
+                 0 2px 12px -2px rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 20px 60px -20px rgba(45, 212, 191, 0.22),
+                 0 6px 20px -6px rgba(0, 0, 0, 0.65);
 }
 
 * { box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
@@ -59,13 +61,11 @@ body {
   line-height: 1.55;
   letter-spacing: -0.012em;
   min-height: 100vh;
+  /* マルチハイマップ → 単色ティールグロー 2 つだけ + 縦方向チャコール */
   background:
-    radial-gradient(ellipse 80% 60% at 10% 0%,    rgba(255, 111, 216, 0.35), transparent 60%),
-    radial-gradient(ellipse 70% 55% at 90% 10%,   rgba(61, 90, 254, 0.40),  transparent 60%),
-    radial-gradient(ellipse 65% 50% at 80% 60%,   rgba(58, 255, 240, 0.22), transparent 65%),
-    radial-gradient(ellipse 70% 55% at 15% 75%,   rgba(165, 105, 255, 0.32), transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 100%,  rgba(255, 111, 216, 0.20), transparent 60%),
-    linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 50%, var(--bg) 100%);
+    radial-gradient(ellipse 70% 50% at 50% 0%,   rgba(45, 212, 191, 0.10), transparent 60%),
+    radial-gradient(ellipse 60% 45% at 50% 100%, rgba(45, 212, 191, 0.06), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 55%, var(--bg-deep) 100%);
   background-attachment: fixed;
   position: relative;
   overflow-x: hidden;
@@ -145,7 +145,7 @@ em { font-style: normal; color: var(--aurora-3); }
   letter-spacing: -0.01em;
   font-size: 14px;
 }
-.globalnav-brand svg { width: 22px; height: 22px; filter: drop-shadow(0 0 8px rgba(165, 105, 255, 0.55)); }
+.globalnav-brand svg { width: 22px; height: 22px; filter: drop-shadow(0 0 8px rgba(45, 212, 191, 0.45)); }
 .globalnav-meta { color: var(--text-3); }
 @media (max-width: 600px) { .globalnav-meta { display: none; } }
 
@@ -163,7 +163,7 @@ em { font-style: normal; color: var(--aurora-3); }
   margin: 0 0 14px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  text-shadow: 0 0 24px rgba(58, 255, 240, 0.4);
+  text-shadow: 0 0 24px rgba(45, 212, 191, 0.35);
 }
 h1 {
   font-size: clamp(40px, 6.4vw, 84px);
@@ -237,24 +237,22 @@ h1 {
   overflow: hidden;
 }
 .btn-pill-primary {
-  color: #0B0820;
-  background:
-    linear-gradient(135deg, var(--aurora-3) 0%, var(--aurora-2) 50%, var(--aurora-1) 100%);
-  border-color: rgba(255, 255, 255, 0.35);
+  color: #0D1115;
+  background: var(--accent);
+  border-color: rgba(255, 255, 255, 0.22);
   box-shadow:
-    0 8px 28px -6px rgba(58, 255, 240, 0.55),
-    0 2px 8px rgba(165, 105, 255, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    0 8px 28px -6px rgba(45, 212, 191, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
   font-weight: 600;
 }
 .btn-pill-primary:hover {
-  color: #0B0820;
+  color: #0D1115;
   text-decoration: none;
   transform: translateY(-1px);
+  background: var(--accent-hover);
   box-shadow:
-    0 12px 36px -6px rgba(58, 255, 240, 0.70),
-    0 4px 16px rgba(255, 111, 216, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    0 12px 36px -6px rgba(45, 212, 191, 0.60),
+    inset 0 1px 0 rgba(255, 255, 255, 0.40);
 }
 .btn-pill-primary:active { transform: translateY(0) scale(0.98); }
 
@@ -310,7 +308,7 @@ h1 {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   margin: 0 0 16px;
-  text-shadow: 0 0 18px rgba(58, 255, 240, 0.35);
+  text-shadow: 0 0 18px rgba(45, 212, 191, 0.30);
 }
 
 h2 {
@@ -326,11 +324,9 @@ h2 {
   text-shadow: 0 4px 30px rgba(255, 255, 255, 0.10);
 }
 h2 em {
-  background: linear-gradient(135deg, var(--aurora-1), var(--aurora-3));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-style: normal;
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 700;
 }
 
 .feature-lead {
@@ -380,16 +376,16 @@ h2 em {
 }
 .feature-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 12px 36px -10px rgba(165, 105, 255, 0.40);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 12px 36px -10px rgba(45, 212, 191, 0.30);
 }
 
 .feature-icon {
   width: 36px;
   height: 36px;
   margin-bottom: 18px;
-  color: var(--aurora-3);
-  filter: drop-shadow(0 0 12px rgba(58, 255, 240, 0.55));
+  color: var(--accent);
+  filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.40));
 }
 .feature-card h3 {
   font-size: 19px;
@@ -451,10 +447,7 @@ h2 em {
 .codeblock-md pre { color: rgba(255, 255, 255, 0.90); }
 .codeblock-md .m-h1 { color: #FFFFFF; font-weight: 700; }
 .codeblock-md .m-h2 {
-  background: linear-gradient(90deg, var(--aurora-1), var(--aurora-3));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--accent);
   font-weight: 600;
 }
 .codeblock-md .m-key { color: rgba(255, 255, 255, 0.55); }
@@ -489,10 +482,7 @@ h2 em {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  background: linear-gradient(90deg, var(--aurora-3), var(--aurora-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--accent);
   margin: 0 0 10px;
 }
 .steps h3 {
@@ -572,10 +562,11 @@ h2 em {
   inset: -2px;
   border-radius: 24px;
   padding: 1px;
+  /* 単色ティールの薄→濃→薄 トーナル */
   background: linear-gradient(135deg,
-    rgba(255, 111, 216, 0.55) 0%,
-    rgba(58, 255, 240, 0.20) 35%,
-    rgba(165, 105, 255, 0.55) 100%);
+    rgba(45, 212, 191, 0.45) 0%,
+    rgba(45, 212, 191, 0.10) 50%,
+    rgba(45, 212, 191, 0.35) 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
           mask-composite: exclude;
@@ -801,8 +792,8 @@ h2 em {
 .lvr-anim .download-card:hover {
   transform: translateY(-3px);
   box-shadow:
-    0 28px 80px -24px rgba(165, 105, 255, 0.55),
-    0 8px 24px -8px rgba(0, 0, 0, 0.55);
+    0 28px 80px -24px rgba(45, 212, 191, 0.42),
+    0 8px 24px -8px rgba(0, 0, 0, 0.65);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -889,19 +880,19 @@ h2 em {
   font-size: 13px;
 }
 .legal-callout {
-  background: linear-gradient(135deg, rgba(255, 111, 216, 0.08), rgba(61, 90, 254, 0.08));
-  border: 1px solid rgba(255, 111, 216, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(45, 212, 191, 0.22);
   border-radius: 12px;
   padding: 20px 22px;
   margin: 16px 0 24px;
 }
 .legal-callout p:last-child { margin-bottom: 0; }
-.legal-callout strong { color: #FFB8E0; }
+.legal-callout strong { color: var(--accent-hover); }
 
 /* Consent banner on landing page */
 .consent-warning {
-  background: linear-gradient(135deg, rgba(255, 111, 216, 0.10), rgba(61, 90, 254, 0.10));
-  border: 1px solid rgba(255, 111, 216, 0.30);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(45, 212, 191, 0.28);
   border-radius: 14px;
   padding: 18px 22px;
   margin: 24px auto 0;
@@ -910,5 +901,5 @@ h2 em {
   font-size: 14px;
   line-height: 1.65;
 }
-.consent-warning strong { color: #FFB8E0; display: block; margin-bottom: 6px; }
+.consent-warning strong { color: var(--accent-hover); display: block; margin-bottom: 6px; }
 .consent-warning a { color: var(--accent-link); text-decoration: underline; text-underline-offset: 3px; }
