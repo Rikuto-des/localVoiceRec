@@ -5,35 +5,31 @@ import Contracts
 extension RecordingDetailView {
     // MARK: - Export
 
-    /// エクスポートボタン + 形式選択ダイアログ + fileExporter。
+    /// 「ログを表示」ボタン + プレビューシート + (シート内からの) ファイル保存ダイアログ。
     /// SummarySection の `regenerateControls` 内から呼び出されて横並びで配置される。
     @ViewBuilder
     var exportControls: some View {
         Button {
-            showFormatChooser = true
+            Task { await preparePreview() }
         } label: {
-            Label("エクスポート", systemImage: "square.and.arrow.up")
+            Label(isPreparingPreview ? "読み込み中…" : "ログを表示",
+                  systemImage: isPreparingPreview ? "ellipsis" : "doc.text.magnifyingglass")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
         .disabled(
             viewModel.selectedRecording == nil ||
+            isPreparingPreview ||
             isPreparingExport ||
             viewModel.isTranscribingSelected ||
             viewModel.isSummarizingSelected
         )
-        .help("議事録を Markdown / プレーンテキストでエクスポートします")
-        .confirmationDialog(
-            "エクスポート形式を選択",
-            isPresented: $showFormatChooser,
-            titleVisibility: .visible
-        ) {
-            ForEach(ExportFormat.allCases) { format in
-                Button(format.displayName) {
-                    Task { await prepareExport(format: format) }
-                }
+        .help("会話ログ / Markdown プレビューを開いて、コピーまたは保存できます")
+        .sheet(item: $previewMinutes) { minutes in
+            TranscriptPreviewSheet(minutes: minutes) { format in
+                // シート内の「保存…」から呼ばれる: 保存ダイアログを fileExporter で開く
+                Task { await prepareExport(format: format) }
             }
-            Button("キャンセル", role: .cancel) { }
         }
         .fileExporter(
             isPresented: Binding(
@@ -50,16 +46,30 @@ extension RecordingDetailView {
             case .success:
                 exportDocument = nil
             case .failure(let error):
-                viewModel.reportExportFailure("エクスポートに失敗しました: \(error.localizedDescription)")
+                viewModel.reportExportFailure("保存に失敗しました: \(error.localizedDescription)")
                 exportDocument = nil
             }
         }
     }
 
     func utType(for format: ExportFormat) -> UTType {
-        UTType(format.utTypeIdentifier) ?? (format == .markdown ? .plainText : .plainText)
+        UTType(format.utTypeIdentifier) ?? .plainText
     }
 
+    /// 「ログを表示」押下時。MeetingMinutes をロードしてシートを開く。
+    func preparePreview() async {
+        guard let recording = viewModel.selectedRecording else { return }
+        isPreparingPreview = true
+        defer { isPreparingPreview = false }
+        do {
+            let minutes = try await viewModel.makeMinutes(for: recording)
+            previewMinutes = minutes
+        } catch {
+            viewModel.reportExportFailure("プレビュー用データの生成に失敗しました: \(String(describing: error))")
+        }
+    }
+
+    /// シート内の「保存…」から呼ばれる: 指定フォーマットで fileExporter のドキュメントを準備。
     func prepareExport(format: ExportFormat) async {
         guard let recording = viewModel.selectedRecording else { return }
         isPreparingExport = true
@@ -70,7 +80,7 @@ extension RecordingDetailView {
             self.exportSuggestedName = suggestedFilename(for: recording, format: format)
             self.exportDocument = MinutesExportDocument(text: text, format: format)
         } catch {
-            viewModel.reportExportFailure("エクスポート用データの生成に失敗しました: \(String(describing: error))")
+            viewModel.reportExportFailure("保存用データの生成に失敗しました: \(String(describing: error))")
         }
     }
 
@@ -82,7 +92,5 @@ extension RecordingDetailView {
             .replacingOccurrences(of: ":", with: "_")
         return "\(safeTitle)_\(dateStr)"
         // 拡張子は SwiftUI が contentType から自動で付与する
-        // 形式選択結果は exportFormat 経由で反映される
-        // （format 引数自体は将来の拡張用に残しておく）
     }
 }

@@ -46,6 +46,12 @@ struct RecordingDetailView: View {
     @State var exportSuggestedName: String = "minutes"
     @State var isPreparingExport: Bool = false
 
+    // ─── ログ表示シート ───
+    /// 「ログを表示」ボタンで開く会話ログ / Markdown プレビュー。
+    /// `nil` の間はシート非表示。
+    @State var previewMinutes: MeetingMinutes?
+    @State var isPreparingPreview: Bool = false
+
     @State var isWaveformExpanded: Bool = true
 
     var body: some View {

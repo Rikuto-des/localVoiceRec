@@ -7,7 +7,10 @@ import Contracts
 /// - `summary` が `nil` の場合、Markdown / Plain Text どちらの出力でも要約セクションは省略される。
 /// - `excludeEchoes` (既定 `true`): `isLikelyEcho == true` の mic セグメントを出力から除外する。
 ///   Slack/Notion 等への議事録貼り付けを「相手の声の二重表示」で汚さないための既定動作。
-struct MeetingMinutes: Sendable {
+struct MeetingMinutes: Sendable, Identifiable {
+    /// `.sheet(item:)` バインディングで使うための識別子。録音の ID をそのまま流用。
+    var id: UUID { recording.id }
+
     let recording: Recording
     let segments: [TranscriptSegment]
     let summary: SummaryDocument?
