@@ -63,6 +63,12 @@ struct RecordingDetailView: View {
 
     @State var isWaveformExpanded: Bool = true
 
+    // ─── 中央セクションのタブ選択 (Agent A が body 側で利用) ───
+    /// 「文字起こし | 要約」のいずれを表示するか。
+    /// 録音を開いた際、要約が実質的にあれば `.summary`、なければ `.transcript` を初期値にする
+    /// (`body` 側の `.task` で計算)。
+    @State var detailSectionTab: DetailSectionTab = .summary
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
