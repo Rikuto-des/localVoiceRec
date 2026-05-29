@@ -81,11 +81,13 @@ xattr -c "$ENTITLEMENTS" 2>/dev/null || true
 
 if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
     # Keychain から該当 team の Developer ID Application 証明書 SHA-1 を取得。
+    # 同名証明書が複数あると codesign が ambiguous で落ちるため、名前ではなく
+    # SHA-1 ハッシュ (find-identity の 2 列目) で一意に指定する。
     SIGN_IDENTITY=$(security find-identity -v -p codesigning \
         | grep "Developer ID Application" \
         | grep "(${DEVELOPMENT_TEAM})" \
         | head -1 \
-        | awk -F'"' '{print $2}')
+        | awk '{print $2}')
     if [[ -z "$SIGN_IDENTITY" ]]; then
         echo "(error) Developer ID Application 証明書が Keychain に見つかりません (team=${DEVELOPMENT_TEAM})"
         echo "        Xcode → Settings → Accounts → Manage Certificates から Developer ID Application を作成してください。"
