@@ -150,10 +150,31 @@ extension RecordingDetailView {
         }
     }
 
+    /// 要約セクションから文字起こしセクションへ横断ジャンプするボタン。
+    /// 録音未選択時は非表示。
+    @ViewBuilder
+    var jumpToTranscriptControl: some View {
+        if viewModel.selectedRecording != nil {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    detailSectionTab = .transcript
+                }
+            } label: {
+                Label("文字起こしを見る", systemImage: "text.bubble")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("文字起こしセクションに切り替えます")
+            .accessibilityLabel("文字起こしを見る")
+        }
+    }
+
     /// 要約の再生成ボタン + ヒント入力欄 + エクスポート (ExportSection 側で実装) を横並びで配置。
     @ViewBuilder
     var regenerateControls: some View {
         HStack(spacing: Theme.Spacing.sm) {
+            jumpToTranscriptControl
             if showHintField {
                 TextField("ヒント(任意)", text: $regenerateHint)
                     .textFieldStyle(.roundedBorder)

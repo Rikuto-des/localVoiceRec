@@ -28,7 +28,10 @@ extension RecordingDetailView {
                 micCount: counts.mic,
                 systemCount: counts.system
             ) {
-                transcribeControls
+                HStack(spacing: Theme.Spacing.sm) {
+                    jumpToSummaryControl
+                    transcribeControls
+                }
             }
 
             if viewModel.isTranscribingSelected && viewModel.segments.isEmpty {
@@ -128,6 +131,26 @@ extension RecordingDetailView {
                     fullTextCopyConfirmedAt = nil
                 }
             }
+        }
+    }
+
+    /// 文字起こしセクションから要約セクションへ横断ジャンプするボタン。
+    /// 録音未選択時は非表示。
+    @ViewBuilder
+    var jumpToSummaryControl: some View {
+        if viewModel.selectedRecording != nil {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    detailSectionTab = .summary
+                }
+            } label: {
+                Label("要約を見る", systemImage: "doc.text")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("要約セクションに切り替えます")
+            .accessibilityLabel("要約を見る")
         }
     }
 

@@ -75,15 +75,54 @@ struct RecordingDetailView: View {
                 if let recording = viewModel.selectedRecording {
                     header(recording: recording)
                     waveformSection(recording: recording)
+                    sectionTabPicker
                 }
-                transcriptSection
-                summarySection
+                selectedSectionBody
                 diagnosticsSection
             }
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .task(id: viewModel.selectedRecording?.id) {
+            // 録音オープン時のデフォルトタブ。要約に実体があれば要約、なければ文字起こし。
+            // 「実体」は要約自身が空でないかで判断する (transcript セグメント数では判断しない)。
+            let summary = viewModel.summaryDocument
+            let hasOverview = !(summary?.overview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            detailSectionTab = hasOverview ? .summary : .transcript
+        }
         .navigationTitle(viewModel.selectedRecording?.title ?? "詳細")
+    }
+
+    // MARK: - Section tab (中央セクション切り替え)
+
+    /// 「文字起こし | 要約」の segmented picker。中央寄せでマック標準の見た目に揃える。
+    private var sectionTabPicker: some View {
+        HStack {
+            Spacer()
+            Picker("", selection: $detailSectionTab) {
+                ForEach(DetailSectionTab.allCases) { tab in
+                    Label(tab.label, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 320)
+            .accessibilityLabel("セクション切り替え")
+            Spacer()
+        }
+    }
+
+    /// 選択中のタブに応じて transcript / summary のいずれかを表示する。
+    @ViewBuilder
+    private var selectedSectionBody: some View {
+        Group {
+            switch detailSectionTab {
+            case .transcript: transcriptSection
+            case .summary:    summarySection
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: detailSectionTab)
     }
 
     // MARK: - Shared helpers
