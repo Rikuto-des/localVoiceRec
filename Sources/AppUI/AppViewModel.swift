@@ -491,9 +491,11 @@ public final class AppViewModel {
             // X3.2: 既に collected 全件が必要なので、ここでの最終 sort は 1 回だけ走る。
             let finalized = collected.filter(\.isFinal).sorted { $0.startSec < $1.startSec }
             let preDedup = finalized.isEmpty ? collected.sorted { $0.startSec < $1.startSec } : finalized
+            // 録音冒頭の SpeechAnalyzer 幻覚 (「相手 00:00:00 あ」) を除外。
+            let preEcho = PhantomLeadingSegmentFilter.drop(segments: preDedup)
             // File-based 経路では cross-channel echo を検出してマーク。
             // (Live 経路では全 segment が揃わないため、ここでは適用しない)
-            let toPersist = CrossChannelEchoMarker.markEchoes(segments: preDedup)
+            let toPersist = CrossChannelEchoMarker.markEchoes(segments: preEcho)
 
             if toPersist.isEmpty {
                 // 完全に何も拾えなかった = 無音か未対応言語の可能性。既存データは消さない。
