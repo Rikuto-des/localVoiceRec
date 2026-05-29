@@ -23,12 +23,14 @@ extension RecordingDetailView {
     var transcriptSection: some View {
         let counts = transcriptCounts()
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            // `transcribeControls` は detail toolbar 側に集約 (IA レビュー)。
+            // header 右端は空にし、件数 pill だけを残す。
             TranscriptHeader(
                 segmentCount: counts.total,
                 micCount: counts.mic,
                 systemCount: counts.system
             ) {
-                transcribeControls
+                EmptyView()
             }
 
             if viewModel.isTranscribingSelected && viewModel.segments.isEmpty {
@@ -48,6 +50,8 @@ extension RecordingDetailView {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.top, Theme.Spacing.xs)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("追加の発話を解析中")
                 }
                 TranscriptFullTextSection(
                     segments: viewModel.segments,
@@ -65,14 +69,14 @@ extension RecordingDetailView {
             ContentUnavailableView {
                 Label("文字起こしできませんでした", systemImage: "speaker.slash")
             } description: {
-                Text("無音または非対応言語の可能性があります。言語設定を確認してから「再実行」してください。")
+                Text("無音または非対応言語の可能性があります。言語設定をご確認のうえ、もう一度お試しください。")
             } actions: {
                 Button {
                     if let recording = viewModel.selectedRecording {
                         Task { await viewModel.transcribeRecording(recording) }
                     }
                 } label: {
-                    Label("再実行", systemImage: "arrow.triangle.2.circlepath")
+                    Label("もう一度実行", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -131,6 +135,8 @@ extension RecordingDetailView {
         }
     }
 
+    /// 文字起こし起動ボタン (toolbar / inline 兼用)。
+    /// 再実行の確認ダイアログは `body` 側 (`transcribeDialogs(...)`) で attach する。
     @ViewBuilder
     var transcribeControls: some View {
         Button {
@@ -145,18 +151,21 @@ extension RecordingDetailView {
             }
         } label: {
             if viewModel.isTranscribingSelected {
-                Label("実行中…", systemImage: "ellipsis")
+                Label("文字起こし中…", systemImage: "ellipsis")
             } else if viewModel.segments.isEmpty {
                 Label("文字起こしを実行", systemImage: "waveform.badge.plus")
             } else {
                 Label("再実行", systemImage: "arrow.triangle.2.circlepath")
             }
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
         .disabled(viewModel.isTranscribingSelected || viewModel.selectedRecording == nil)
         .help(viewModel.segments.isEmpty ? "Speech フレームワークで文字起こしを開始します" : "既存の文字起こしを破棄して再実行します")
-        .confirmationDialog(
+    }
+
+    /// 文字起こし再実行の破壊的確認。toolbar の `transcribeControls` から
+    /// `showTranscribeReconfirm` 経由でトリガされる。
+    func transcribeDialogs<Content: View>(_ content: Content) -> some View {
+        content.confirmationDialog(
             "文字起こしを再実行しますか？",
             isPresented: $showTranscribeReconfirm,
             titleVisibility: .visible

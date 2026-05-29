@@ -23,10 +23,10 @@ extension RecordingDetailView {
             .padding(.top, Theme.Spacing.sm)
         } label: {
             Label("録音波形", systemImage: "waveform")
-                .font(.headline)
+                .font(Theme.Typography.sectionTitle)
                 .accessibilityAddTraits(.isHeader)
         }
         .padding(Theme.Spacing.md)
-        .subtleSurface()
+        .cardSurface()
     }
 }

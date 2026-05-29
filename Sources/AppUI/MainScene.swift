@@ -53,10 +53,11 @@ public struct MainScene: Scene {
         // メニューバーポップアップを開かなくても録音制御が可能。
         .commands {
             RecordingCommands(viewModel: viewModel)
+            SidebarCommands()
             // X4.2: macOS 標準 ⌘F (Find) を「文字起こし内検索」にバインド。
-            // textEditing グループを置き換え、メインメニュー → 編集 → 検索 にも露出。
-            CommandGroup(replacing: .textEditing) {
-                Button("検索…") {
+            // textEditing の後に追加して、標準の Cut/Copy/Paste/Undo を保持する。
+            CommandGroup(after: .textEditing) {
+                Button("文字起こし内を検索…") {
                     NotificationCenter.default.post(name: .focusTranscriptSearch, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
@@ -162,7 +163,7 @@ private struct MenuBarLabel: View {
                     .accessibilityLabel("録音中")
             case .paused:
                 Image(systemName: "pause.circle.fill")
-                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .foregroundStyle(Color(nsColor: .systemYellow))
                     .accessibilityLabel("一時停止中")
             case .preparing:
                 Image(systemName: "mic.circle")

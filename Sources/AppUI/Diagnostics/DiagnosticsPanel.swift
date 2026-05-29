@@ -4,7 +4,7 @@ import Contracts
 import ContractsTestSupport
 #endif
 
-/// 折りたたみ式の診断パネル。
+/// 診断パネル。
 ///
 /// 「録音されていなさそう / 文字起こしが出ない」というユーザー訴えに対し、
 /// 原因切り分けに必要な情報をまとめて表示する:
@@ -15,33 +15,26 @@ import ContractsTestSupport
 /// - 選択中の録音のファイル URL
 /// - 直近 5 分の os.log エントリをクリップボードへ (`LogCopySection` + `DiagnosticsLogCollector`)
 ///
-/// ## HIG 準拠ポイント
-/// - セクション名は `caption.bold()` + `.secondary` (Form の section title 風)
-/// - 警告は色 + アイコンの 2 要素で表現
-/// - 設定アプリへの遷移ボタンは `.bordered` + `.controlSize(.small)`
+/// IA レビュー後の運用: RecordingDetailView の toolbar から sheet で表示する。
+/// 以前の inline DisclosureGroup スタイルは廃止し、シートに合わせたフラット表示。
 struct DiagnosticsPanel: View {
     @Bindable var viewModel: AppViewModel
-    @State private var isExpanded: Bool = false
     @State private var isRefreshing: Bool = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            content
-                .padding(.top, Theme.Spacing.sm)
-        } label: {
-            HStack {
-                Label("診断情報", systemImage: "stethoscope")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                if isRefreshing {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            if isRefreshing {
+                HStack(spacing: Theme.Spacing.xs) {
                     ProgressView().controlSize(.small)
-                        .accessibilityLabel("診断情報を更新中")
+                    Text("診断情報を更新中…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("診断情報を更新中")
             }
+            content
         }
-        .padding(Theme.Spacing.md)
-        .subtleSurface()
         .task {
             await refresh()
         }

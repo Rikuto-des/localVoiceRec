@@ -38,15 +38,15 @@ extension RecordingDetailView {
                 )
             } else if viewModel.segments.isEmpty {
                 emptyBox(
-                    title: "要約はまだありません",
-                    message: "先に文字起こしを実行してください。",
+                    title: "要約は文字起こし後に生成します",
+                    message: "まず「文字起こしを実行」を押してください。",
                     systemImage: "doc.text"
                 )
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     emptyBox(
                         title: "要約はまだ生成されていません",
-                        message: "「要約を生成」を押すと Apple Intelligence で要約します。",
+                        message: "Apple Intelligence でこの会話を要約します。",
                         systemImage: "sparkles"
                     )
                     Button {
@@ -73,19 +73,11 @@ extension RecordingDetailView {
     var summaryErrorBanner: some View {
         if let err = viewModel.lastError,
            err.contains("要約") || err.localizedCaseInsensitiveContains("summary") {
-            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                Image(systemName: "exclamationmark.octagon.fill")
-                    .foregroundStyle(Theme.Palette.error)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("要約の生成に失敗しました")
-                        .font(.subheadline.weight(.semibold))
-                    Text(err)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
+            CalloutView(
+                tone: .error,
+                title: "要約の生成に失敗しました",
+                message: err
+            ) {
                 Button {
                     Task { await viewModel.regenerateSummary(hint: nil) }
                 } label: {
@@ -95,16 +87,6 @@ extension RecordingDetailView {
                 .controlSize(.small)
                 .disabled(viewModel.isBusy || viewModel.isSummarizingSelected || !isSummaryAvailable)
             }
-            .padding(Theme.Spacing.sm)
-            .background(
-                Theme.Palette.error.opacity(0.12),
-                in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-                    .strokeBorder(Theme.Palette.error.opacity(0.4), lineWidth: 0.5)
-            )
-            .accessibilityElement(children: .combine)
         }
     }
 
@@ -114,26 +96,9 @@ extension RecordingDetailView {
         case .available:
             EmptyView()
         case .unavailable(let reason):
-            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Theme.Palette.warning)
-                    .accessibilityHidden(true)
-                Text(reasonText(reason))
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+            CalloutView(tone: .warning, message: reasonText(reason)) {
+                EmptyView()
             }
-            .padding(Theme.Spacing.sm)
-            .background(
-                Theme.Palette.warning.opacity(0.12),
-                in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
-                    .strokeBorder(Theme.Palette.warning.opacity(0.4), lineWidth: 0.5)
-            )
-            .accessibilityElement(children: .combine)
         }
     }
 
@@ -150,29 +115,28 @@ extension RecordingDetailView {
         }
     }
 
-    /// 要約の再生成ボタン + ヒント入力欄 + エクスポート (ExportSection 側で実装) を横並びで配置。
+    /// 要約の再生成ボタン + ヒント入力欄。
+    /// エクスポートは録音単位の操作なので detail toolbar 側 (`detailToolbarContent`) に移設した。
     @ViewBuilder
     var regenerateControls: some View {
         HStack(spacing: Theme.Spacing.sm) {
             if showHintField {
-                TextField("ヒント(任意)", text: $regenerateHint)
+                TextField("ヒント（任意）", text: $regenerateHint)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .frame(width: 200)
+                    .onSubmit {
+                        Task { await submitRegenerate() }
+                    }
             }
             Button {
                 if !showHintField {
                     showHintField = true
                 } else {
-                    Task {
-                        let hint = regenerateHint.isEmpty ? nil : regenerateHint
-                        await viewModel.regenerateSummary(hint: hint)
-                        showHintField = false
-                        regenerateHint = ""
-                    }
+                    Task { await submitRegenerate() }
                 }
             } label: {
-                Label("要約を再生成", systemImage: "arrow.triangle.2.circlepath")
+                Label(showHintField ? "ヒント付きで生成" : "要約を再生成", systemImage: "arrow.triangle.2.circlepath")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -182,7 +146,7 @@ extension RecordingDetailView {
                 viewModel.segments.isEmpty ||
                 !isSummaryAvailable
             )
-            .help(showHintField ? "ヒントを使って要約を再生成します" : "要約を再生成します(任意でヒントを与えられます)")
+            .help(showHintField ? "ヒントを使って要約を再生成します" : "要約を再生成します（ヒントを追加できます）")
 
             if showHintField {
                 Button {
@@ -196,9 +160,15 @@ extension RecordingDetailView {
                 .controlSize(.small)
                 .help("ヒント入力を閉じます")
             }
-
-            exportControls
         }
+    }
+
+    /// 再生成ボタンと TextField の `onSubmit` の共通アクション。
+    private func submitRegenerate() async {
+        let hint = regenerateHint.isEmpty ? nil : regenerateHint
+        await viewModel.regenerateSummary(hint: hint)
+        showHintField = false
+        regenerateHint = ""
     }
 
     var isSummaryAvailable: Bool {

@@ -31,9 +31,43 @@ enum Theme {
         static let detailPaneMinWidth: CGFloat = 420
         /// 標準カードの角丸 (HIG: medium controls)
         static let cornerRadius: CGFloat = 10
+        /// 入力フィールドの角丸 (TextField / SearchField)
+        static let inputCornerRadius: CGFloat = 8
+        /// チャットバブルの角丸 (やや丸め)
+        static let bubbleCornerRadius: CGFloat = 12
         /// 小さな pill / inline badge 用
         static let pillCornerRadius: CGFloat = 6
-        static let bubbleMaxWidth: CGFloat = 320
+        static let bubbleMaxWidth: CGFloat = 480
+        /// セクション本文の Label アイコンの幅 (Summary block container 等)
+        static let iconLeading: CGFloat = 20
+        /// hairline 罫線 (0.5pt)
+        static let hairline: CGFloat = 0.5
+        /// 通常の罫線
+        static let border: CGFloat = 1
+    }
+
+    // MARK: - Typography ramp
+    /// アプリ全体で使う型階層トークン。
+    ///
+    /// HIG の Dynamic Type 階層 (`largeTitle`/`title*`/`headline`/...) を統一的に
+    /// 役割名にマッピングし、各 view が `.headline.weight(.semibold)` のような
+    /// アドホックな組み合わせを書かないようにする。
+    enum Typography {
+        /// 詳細ビューのメインタイトル (録音タイトル等)。macOS detail pane では
+        /// `.title2` だと大きすぎる傾向があるため `.title3` を採用。
+        static let detailTitle: Font = .title3.weight(.semibold)
+        /// セクション見出し (文字起こし / 要約 / 録音波形 など)
+        static let sectionTitle: Font = .headline
+        /// セクション内ブロックの見出し (Overview / Decisions など)
+        static let subsectionTitle: Font = .subheadline.weight(.semibold)
+        /// 本文 (チャットバブル等)
+        static let body: Font = .body
+        /// 本文補足
+        static let bodySecondary: Font = .footnote
+        /// メタ情報 (件数 / タイムスタンプ)、桁揃え数値
+        static let metadata: Font = .caption.monospacedDigit()
+        /// pill / badge の小ラベル
+        static let pill: Font = .caption2.monospacedDigit()
     }
 
     // MARK: - Semantic colors
@@ -45,10 +79,14 @@ enum Theme {
         // ─── Recording state ───
         /// 録音中の赤。`systemRed` はライト/ダークでコントラスト調整済み。
         static let recording = Color(nsColor: .systemRed)
-        /// 一時停止 / 警告の橙。
+        /// 警告/中断の橙。`paused` (黄) と意味分離。
         static let warning = Color(nsColor: .systemOrange)
+        /// 一時停止 (ユーザー操作) の黄。`warning` と区別する。
+        static let paused = Color(nsColor: .systemYellow)
         /// 成功 / 完了の緑。
         static let success = Color(nsColor: .systemGreen)
+        /// 情報メッセージ (notice) の青。
+        static let info = Color(nsColor: .systemBlue)
         /// エラーの赤 (recording と同色だがセマンティクスで分離)。
         static let error = Color(nsColor: .systemRed)
         /// A10: システム音声 (相手) の波形・バブル等で使う色。
@@ -161,25 +199,123 @@ enum AppFormatters {
 
 // MARK: - Convenience view modifiers
 
+/// セマンティック callout の色合い。
+enum CalloutTone {
+    case info, success, warning, error
+
+    fileprivate var color: Color {
+        switch self {
+        case .info: return Theme.Palette.info
+        case .success: return Theme.Palette.success
+        case .warning: return Theme.Palette.warning
+        case .error: return Theme.Palette.error
+        }
+    }
+
+    fileprivate var systemImage: String {
+        switch self {
+        case .info: return "info.circle.fill"
+        case .success: return "checkmark.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .error: return "exclamationmark.octagon.fill"
+        }
+    }
+}
+
 extension View {
-    /// HIG 準拠の "card" 背景を当てる（`.regularMaterial` ベース、フォールバックは controlBackground）。
-    /// セクションを軽く浮かせる用途に使う。
+    /// HIG 準拠の "card" 背景を当てる（`.regularMaterial` ベース、Reduce Transparency 時は solid fill）。
+    /// セクションを軽く浮かせる親 surface に使う。
     func cardSurface(cornerRadius: CGFloat = Theme.Layout.cornerRadius) -> some View {
-        self.background(
-            .regularMaterial,
-            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Theme.Palette.separator.opacity(0.4), lineWidth: 0.5)
-        )
+        modifier(CardSurfaceModifier(cornerRadius: cornerRadius))
     }
 
     /// より控えめな塗り (フォーム行など)。Material を使わず `controlBackgroundColor` を使う。
+    /// 子要素 surface として使う (card の中の block)。
     func subtleSurface(cornerRadius: CGFloat = Theme.Layout.cornerRadius) -> some View {
         self.background(
             Theme.Palette.surfaceSecondary,
             in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
+    }
+
+    /// セマンティック callout バナー (info / success / warning / error)。
+    /// 旧実装は各 view で同じ `tint.opacity(0.12)` + `tint.opacity(0.4)` 0.5pt の枠を
+    /// 手書きしていたが、本 modifier に集約することで一貫性とアクセシビリティ
+    /// (Reduce Transparency 対応) を担保する。
+    func calloutBanner(tone: CalloutTone, cornerRadius: CGFloat = Theme.Layout.cornerRadius) -> some View {
+        modifier(CalloutBannerModifier(tone: tone, cornerRadius: cornerRadius))
+    }
+}
+
+private struct CardSurfaceModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return Group {
+            if reduceTransparency {
+                content.background(Theme.Palette.surfaceSecondary, in: shape)
+            } else {
+                content.background(.regularMaterial, in: shape)
+            }
+        }
+        .overlay(
+            shape.strokeBorder(Theme.Palette.separator.opacity(0.4), lineWidth: Theme.Layout.hairline)
+        )
+    }
+}
+
+private struct CalloutBannerModifier: ViewModifier {
+    let tone: CalloutTone
+    let cornerRadius: CGFloat
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let bgOpacity = reduceTransparency ? 0.22 : 0.12
+        return content
+            .padding(Theme.Spacing.sm)
+            .background(tone.color.opacity(bgOpacity), in: shape)
+            .overlay(shape.strokeBorder(tone.color.opacity(0.4), lineWidth: Theme.Layout.hairline))
+    }
+}
+
+/// アイコン付き callout — 文字列 + 任意の trailing view (主に Button) を渡すと
+/// 標準的なレイアウトで `calloutBanner(tone:)` を適用する。
+struct CalloutView<Trailing: View>: View {
+    let tone: CalloutTone
+    let title: String?
+    let message: String
+    @ViewBuilder let trailing: () -> Trailing
+
+    init(tone: CalloutTone, title: String? = nil, message: String, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
+        self.tone = tone
+        self.title = title
+        self.message = message
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            Image(systemName: tone.systemImage)
+                .foregroundStyle(tone.color)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if let title {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                }
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            trailing()
+        }
+        .calloutBanner(tone: tone)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title.map { "\($0). \(message)" } ?? message)
     }
 }

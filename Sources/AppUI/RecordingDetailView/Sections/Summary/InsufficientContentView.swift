@@ -13,7 +13,7 @@ struct InsufficientContentView: View {
     var body: some View {
         VStack(spacing: Theme.Spacing.md) {
             ContentUnavailableView {
-                Label("十分な内容が無いため要約を生成しませんでした", systemImage: "text.magnifyingglass")
+                Label("要約に十分な内容が見つかりませんでした", systemImage: "text.magnifyingglass")
             } description: {
                 Text("録音が短いか、相槌のみで構成されている可能性があります。手動で再生成する場合は下のボタンを押してください。")
                     .multilineTextAlignment(.center)
@@ -31,7 +31,7 @@ struct InsufficientContentView: View {
         .padding(Theme.Spacing.lg)
         .subtleSurface()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("十分な内容が無いため要約を生成しませんでした")
+        .accessibilityLabel("要約に十分な内容が見つかりませんでした")
     }
 }
 

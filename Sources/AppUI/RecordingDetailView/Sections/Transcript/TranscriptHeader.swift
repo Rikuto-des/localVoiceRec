@@ -14,7 +14,7 @@ struct TranscriptHeader<Controls: View>: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.md) {
             Label("文字起こし", systemImage: "text.bubble")
-                .font(.headline)
+                .font(Theme.Typography.sectionTitle)
                 .accessibilityAddTraits(.isHeader)
 
             if segmentCount > 0 {

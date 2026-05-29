@@ -41,44 +41,40 @@ struct TranscriptSearchBar: View {
                         .foregroundStyle(matchCount > 0 ? .secondary : Theme.Palette.warning)
                         .accessibilityLabel(matchCount > 0 ? "\(matchCount) 件一致" : "一致なし")
                 }
+                if query.isEmpty && !isSearchFocused {
+                    Text("⌘F")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            Theme.Palette.separator.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        )
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, Theme.Spacing.sm)
             .padding(.vertical, 6)
             .background(
                 Theme.Palette.textField,
-                in: RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                in: RoundedRectangle(cornerRadius: Theme.Layout.inputCornerRadius, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Layout.inputCornerRadius, style: .continuous)
                     .strokeBorder(Theme.Palette.separator, lineWidth: 0.5)
             )
 
             HStack(spacing: Theme.Spacing.sm) {
-                ForEach(SpeakerFilter.allCases, id: \.self) { f in
-                    Button {
-                        filter = f
-                    } label: {
-                        Text(f.label)
-                            .font(.caption)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(
-                                filter == f ? Color.accentColor.opacity(0.18) : Color.clear,
-                                in: Capsule()
-                            )
-                            .overlay(
-                                Capsule().strokeBorder(
-                                    filter == f ? Color.accentColor : Theme.Palette.separator,
-                                    lineWidth: 0.5
-                                )
-                            )
-                            .foregroundStyle(filter == f ? Color.accentColor : .secondary)
+                Picker("話者フィルタ", selection: $filter) {
+                    ForEach(SpeakerFilter.allCases, id: \.self) { f in
+                        Text(f.label).tag(f)
                     }
-                    .buttonStyle(.plain)
-                    .help(f.help)
-                    .accessibilityLabel(f.label)
-                    .accessibilityAddTraits(filter == f ? [.isButton, .isSelected] : .isButton)
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .help("話者で文字起こしを絞り込みます")
+                .accessibilityLabel("話者フィルタ")
                 Spacer()
                 Toggle(isOn: $hideEcho) {
                     Text("回り込みを除外")

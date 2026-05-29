@@ -46,10 +46,13 @@ struct RecordingDetailView: View {
     @State var exportSuggestedName: String = "minutes"
     @State var isPreparingExport: Bool = false
 
-    @State var isWaveformExpanded: Bool = true
+    @State var isWaveformExpanded: Bool = false
+
+    /// 診断情報シートの開閉状態。inline 表示から sheet モーダル化 (IA レビュー Z2.1)。
+    @State var showDiagnosticsSheet: Bool = false
 
     var body: some View {
-        ScrollView {
+        let scroll = ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                 if let recording = viewModel.selectedRecording {
                     header(recording: recording)
@@ -57,12 +60,78 @@ struct RecordingDetailView: View {
                 }
                 transcriptSection
                 summarySection
-                diagnosticsSection
             }
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle(viewModel.selectedRecording?.title ?? "詳細")
+        .toolbar {
+            detailToolbarContent
+        }
+        .sheet(isPresented: $showDiagnosticsSheet) {
+            diagnosticsSheet
+        }
+        return transcribeDialogs(exportDialogs(scroll))
+    }
+
+    // MARK: - Toolbar
+
+    /// 録音詳細ペイン共通の primaryAction バー。
+    /// Export / Finder / Re-transcribe / Re-summarize / Diagnostics を集約する。
+    @ToolbarContentBuilder
+    var detailToolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            // Finder
+            Button {
+                if let recording = viewModel.selectedRecording {
+                    FinderReveal.openRecordingFolder(for: recording)
+                }
+            } label: {
+                Label("Finder で開く", systemImage: "folder")
+            }
+            .disabled(viewModel.selectedRecording == nil)
+            .help("録音ファイルが入っているフォルダを Finder で開きます")
+
+            // 再文字起こし (existing transcribeControls handles disable + confirmation)
+            transcribeControls
+
+            // Export
+            exportControls
+
+            // Diagnostics
+            Button {
+                showDiagnosticsSheet = true
+            } label: {
+                Label("診断情報", systemImage: "stethoscope")
+            }
+            .help("マイク権限・音声フロー・ログなどの診断情報を表示します")
+        }
+    }
+
+    /// Diagnostics シート — toolbar の `stethoscope` ボタンから呼び出される。
+    @ViewBuilder
+    var diagnosticsSheet: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("診断情報", systemImage: "stethoscope")
+                    .font(Theme.Typography.sectionTitle)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button("閉じる") {
+                    showDiagnosticsSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(Theme.Spacing.lg)
+
+            Divider()
+
+            ScrollView {
+                DiagnosticsPanel(viewModel: viewModel)
+                    .padding(Theme.Spacing.lg)
+            }
+        }
+        .frame(minWidth: 480, idealWidth: 560, minHeight: 420, idealHeight: 600)
     }
 
     // MARK: - Shared helpers

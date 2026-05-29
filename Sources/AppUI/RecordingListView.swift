@@ -65,26 +65,33 @@ struct RecordingListView: View {
                 ContentUnavailableView.search(text: searchText)
             } else {
                 List(selection: $selectedID) {
-                    ForEach(viewModel.recordings) { recording in
-                        RecordingRow(
-                            recording: recording,
-                            status: viewModel.status(for: recording.id)
-                        )
-                            .tag(recording.id as Recording.ID?)
-                            .contextMenu {
-                                Button {
-                                    FinderReveal.openRecordingFolder(for: recording)
-                                } label: {
-                                    Label("Finder で開く", systemImage: "folder")
-                                }
-                                Divider()
-                                Button(role: .destructive) {
-                                    // A4: 削除は必ず確認ダイアログを挟む
-                                    pendingDeletion = recording
-                                } label: {
-                                    Label("削除…", systemImage: "trash")
-                                }
+                    ForEach(bucketize(viewModel.recordings), id: \.name) { bucket in
+                        Section {
+                            ForEach(bucket.items) { recording in
+                                RecordingRow(
+                                    recording: recording,
+                                    status: viewModel.status(for: recording.id)
+                                )
+                                    .tag(recording.id as Recording.ID?)
+                                    .contextMenu {
+                                        Button {
+                                            FinderReveal.openRecordingFolder(for: recording)
+                                        } label: {
+                                            Label("Finder で開く", systemImage: "folder")
+                                        }
+                                        Divider()
+                                        Button(role: .destructive) {
+                                            // A4: 削除は必ず確認ダイアログを挟む
+                                            pendingDeletion = recording
+                                        } label: {
+                                            Label("削除…", systemImage: "trash")
+                                        }
+                                    }
+                                    .draggable(recording.micAudioURL)
                             }
+                        } header: {
+                            Text(bucket.name)
+                        }
                     }
                 }
                 .listStyle(.sidebar)
@@ -99,7 +106,7 @@ struct RecordingListView: View {
         }
         .searchable(text: $searchText, prompt: "タイトルで検索")
         // A4: 削除確認ダイアログ。文字起こし・要約も消える旨を明示。
-        .confirmationDialog(
+        .alert(
             "この録音を削除しますか？",
             isPresented: Binding(
                 get: { pendingDeletion != nil },
@@ -117,19 +124,22 @@ struct RecordingListView: View {
                 pendingDeletion = nil
             }
         } message: { recording in
-            Text("\(recording.title) の音声・文字起こし・要約がすべて消去されます。この操作は取り消せません。")
+            Text("\(recording.title) の音声・文字起こし・要約がすべて削除されます。この操作は取り消せません。")
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await viewModel.retryAllPendingTranscriptions() }
+                Menu {
+                    Button {
+                        Task { await viewModel.retryAllPendingTranscriptions() }
+                    } label: {
+                        Label(pendingWorkCount > 0 ? "未処理を再処理（\(pendingWorkCount) 件）" : "未処理を再処理",
+                              systemImage: "wand.and.stars")
+                    }
+                    .disabled(!hasPendingWork || viewModel.isTranscribing)
                 } label: {
-                    // X4.9: 動的件数で「何件処理されるか」を事前に伝える。
-                    Label(pendingWorkCount > 0 ? "未処理 \(pendingWorkCount) 件を再処理" : "未処理を再処理",
-                          systemImage: "wand.and.stars")
+                    Image(systemName: "ellipsis.circle")
                 }
-                .disabled(!hasPendingWork || viewModel.isTranscribing)
-                .help("未文字起こし・無音・失敗の録音をまとめて再処理します")
+                .help("その他の操作")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -137,7 +147,8 @@ struct RecordingListView: View {
                 } label: {
                     Label("更新", systemImage: "arrow.clockwise")
                 }
-                .help("録音一覧を最新の状態に更新します")
+                .help("録音一覧を最新の状態に更新します (⌘⇧R)")
+                .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
     }
@@ -162,7 +173,7 @@ struct RecordingListView: View {
         ContentUnavailableView(
             "録音がまだありません",
             systemImage: "mic.slash",
-            description: Text("メニューバーから録音を開始してください。")
+            description: Text("メニューバーアイコンから録音を開始してください（⌘R）。")
         )
     }
 
@@ -180,6 +191,56 @@ struct RecordingListView: View {
             )
         }
     }
+}
+
+/// 相対日付バケットでまとめた録音グループ。
+fileprivate struct RecordingBucket {
+    let name: String
+    let items: [Recording]
+}
+
+/// 録音を「今日 / 昨日 / 今週 / 今月 / それ以前」のバケットに分割する。
+///
+/// - `startedAt` の降順で並べ替えてから振り分ける。
+/// - 空のバケットはスキップ。
+fileprivate func bucketize(_ recordings: [Recording]) -> [RecordingBucket] {
+    var calendar = Calendar.current
+    calendar.locale = Locale(identifier: "ja_JP")
+    let now = Date()
+
+    let sorted = recordings.sorted { $0.startedAt > $1.startedAt }
+
+    var today: [Recording] = []
+    var yesterday: [Recording] = []
+    var thisWeek: [Recording] = []
+    var thisMonth: [Recording] = []
+    var older: [Recording] = []
+
+    let startOfToday = calendar.startOfDay(for: now)
+    let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+
+    for recording in sorted {
+        let date = recording.startedAt
+        if calendar.isDate(date, inSameDayAs: now) {
+            today.append(recording)
+        } else if date >= startOfYesterday && date < startOfToday {
+            yesterday.append(recording)
+        } else if calendar.isDate(date, equalTo: now, toGranularity: .weekOfYear) {
+            thisWeek.append(recording)
+        } else if calendar.isDate(date, equalTo: now, toGranularity: .month) {
+            thisMonth.append(recording)
+        } else {
+            older.append(recording)
+        }
+    }
+
+    var buckets: [RecordingBucket] = []
+    if !today.isEmpty { buckets.append(RecordingBucket(name: "今日", items: today)) }
+    if !yesterday.isEmpty { buckets.append(RecordingBucket(name: "昨日", items: yesterday)) }
+    if !thisWeek.isEmpty { buckets.append(RecordingBucket(name: "今週", items: thisWeek)) }
+    if !thisMonth.isEmpty { buckets.append(RecordingBucket(name: "今月", items: thisMonth)) }
+    if !older.isEmpty { buckets.append(RecordingBucket(name: "それ以前", items: older)) }
+    return buckets
 }
 
 /// 一覧の 1 行。
@@ -227,6 +288,7 @@ private struct StatusBadge: View {
         switch status {
         case .pending:
             Image(systemName: "circle.dashed")
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
                 .help("文字起こし未実行")
                 .accessibilityLabel("文字起こし未実行")
@@ -250,21 +312,25 @@ private struct StatusBadge: View {
             .accessibilityLabel("要約を生成中")
         case .transcribed:
             Image(systemName: "text.bubble.fill")
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
                 .help("文字起こし済み（要約なし）")
                 .accessibilityLabel("文字起こし済み")
         case .completed:
             Image(systemName: "checkmark.seal.fill")
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Theme.Palette.success)
                 .help("文字起こし + 要約完了")
                 .accessibilityLabel("完了")
         case .emptyTranscript:
             Image(systemName: "speaker.slash")
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
                 .help("音声内容が検出されませんでした")
                 .accessibilityLabel("音声未検出")
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Theme.Palette.error)
                 .help("処理に失敗しました")
                 .accessibilityLabel("失敗")

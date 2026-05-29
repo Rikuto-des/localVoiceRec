@@ -25,18 +25,20 @@ struct SummaryContent: View {
                 canRegenerate: canRegenerate
             )
         } else {
+            // IA レビュー反映: 会議要約を開く主目的は「自分が何をやるか」のため
+            // ActionItems を Decisions より上に配置する。
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                 OverviewBlock(
                     overview: summary.overview,
                     isExpanded: $overviewExpanded
                 )
-                DecisionsBlock(
-                    decisions: summary.decisions,
-                    isExpanded: $decisionsExpanded
-                )
                 ActionItemsBlock(
                     items: summary.actionItems,
                     isExpanded: $actionsExpanded
+                )
+                DecisionsBlock(
+                    decisions: summary.decisions,
+                    isExpanded: $decisionsExpanded
                 )
                 OpenQuestionsBlock(
                     questions: summary.openQuestions,

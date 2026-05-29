@@ -5,8 +5,8 @@ import Contracts
 extension RecordingDetailView {
     // MARK: - Export
 
-    /// エクスポートボタン + 形式選択ダイアログ + fileExporter。
-    /// SummarySection の `regenerateControls` 内から呼び出されて横並びで配置される。
+    /// エクスポートボタン (toolbar 配置)。
+    /// 形式選択ダイアログ + fileExporter は `body` 側 (`exportDialogs(...)`) に集約。
     @ViewBuilder
     var exportControls: some View {
         Button {
@@ -14,8 +14,6 @@ extension RecordingDetailView {
         } label: {
             Label("エクスポート", systemImage: "square.and.arrow.up")
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
         .disabled(
             viewModel.selectedRecording == nil ||
             isPreparingExport ||
@@ -23,37 +21,44 @@ extension RecordingDetailView {
             viewModel.isSummarizingSelected
         )
         .help("議事録を Markdown / プレーンテキストでエクスポートします")
-        .confirmationDialog(
-            "エクスポート形式を選択",
-            isPresented: $showFormatChooser,
-            titleVisibility: .visible
-        ) {
-            ForEach(ExportFormat.allCases) { format in
-                Button(format.displayName) {
-                    Task { await prepareExport(format: format) }
+    }
+
+    /// ScrollView 側に attach するエクスポート用ダイアログ群。
+    /// toolbar 内の view 階層では fileExporter / confirmationDialog の挙動が
+    /// 不安定なため、ホスト view から呼ぶ。
+    func exportDialogs<Content: View>(_ content: Content) -> some View {
+        content
+            .confirmationDialog(
+                "エクスポート形式を選択",
+                isPresented: $showFormatChooser,
+                titleVisibility: .visible
+            ) {
+                ForEach(ExportFormat.allCases) { format in
+                    Button(format.displayName) {
+                        Task { await prepareExport(format: format) }
+                    }
+                }
+                Button("キャンセル", role: .cancel) { }
+            }
+            .fileExporter(
+                isPresented: Binding(
+                    get: { exportDocument != nil },
+                    set: { newValue in
+                        if !newValue { exportDocument = nil }
+                    }
+                ),
+                document: exportDocument,
+                contentType: utType(for: exportFormat),
+                defaultFilename: exportSuggestedName
+            ) { result in
+                switch result {
+                case .success:
+                    exportDocument = nil
+                case .failure(let error):
+                    viewModel.reportExportFailure("エクスポートに失敗しました: \(error.localizedDescription)")
+                    exportDocument = nil
                 }
             }
-            Button("キャンセル", role: .cancel) { }
-        }
-        .fileExporter(
-            isPresented: Binding(
-                get: { exportDocument != nil },
-                set: { newValue in
-                    if !newValue { exportDocument = nil }
-                }
-            ),
-            document: exportDocument,
-            contentType: utType(for: exportFormat),
-            defaultFilename: exportSuggestedName
-        ) { result in
-            switch result {
-            case .success:
-                exportDocument = nil
-            case .failure(let error):
-                viewModel.reportExportFailure("エクスポートに失敗しました: \(error.localizedDescription)")
-                exportDocument = nil
-            }
-        }
     }
 
     func utType(for format: ExportFormat) -> UTType {

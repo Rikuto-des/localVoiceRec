@@ -36,18 +36,19 @@ struct SummaryBlockContainer<Content: View>: View {
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: kind.systemImage)
                     .foregroundStyle(kind.tint)
-                    .font(.headline)
-                    .frame(width: 20)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(Theme.Typography.sectionTitle)
+                    .frame(width: Theme.Layout.iconLeading)
                     .accessibilityHidden(true)
 
                 Text(kind.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(Theme.Typography.subsectionTitle)
                     .foregroundStyle(.primary)
                     .accessibilityAddTraits(.isHeader)
 
                 if let count, count > 0 {
                     Text("\(count)")
-                        .font(.caption2.monospacedDigit())
+                        .font(Theme.Typography.pill)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 1)

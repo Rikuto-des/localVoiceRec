@@ -12,7 +12,7 @@ import ContractsTestSupport
 /// ## HIG 準拠ポイント
 /// - 主操作 (録音開始 / 停止) は `.borderedProminent` + `.controlSize(.large)`
 /// - 補助操作 (一時停止 / 再開) は `.bordered`
-/// - 終了は `.borderless` + role: .destructive
+/// - 終了は macOS 標準メニュー (⌘Q) に委譲（ポップアップには配置しない）
 /// - 状態バッジは色 + テキスト + アイコンの 3 要素 (色だけに依存しない)
 /// - すべてのボタンに `.help()` を付与
 struct MenuBarContentView: View {
@@ -58,6 +58,7 @@ struct MenuBarContentView: View {
             Divider()
             footer
         }
+        .symbolRenderingMode(.hierarchical)
         .padding(Theme.Spacing.lg)
         .frame(width: Theme.Layout.menuBarWidth)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: viewModel.captureState)
@@ -101,7 +102,7 @@ struct MenuBarContentView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("録音中")
         case .paused:
-            badge(text: "一時停止", systemImage: "pause.circle.fill", tint: Theme.Palette.warning)
+            badge(text: "一時停止", systemImage: "pause.circle.fill", tint: Theme.Palette.paused)
         case .finalizing:
             badge(text: "保存中", systemImage: "arrow.down.circle", tint: .secondary)
         case .failed:
@@ -128,7 +129,7 @@ struct MenuBarContentView: View {
     private var statusDescription: some View {
         switch viewModel.captureState {
         case .idle:
-            Text("メニューバーから録音を開始できます")
+            Text("録音を開始する準備ができています（⌘R）")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         case .preparing:
@@ -154,25 +155,29 @@ struct MenuBarContentView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("一時停止中（開始: \(startedAt.formatted(date: .omitted, time: .standard))）")
                     .font(.footnote)
-                    .foregroundStyle(Theme.Palette.warning)
+                    .foregroundStyle(Theme.Palette.paused)
                     .monospacedDigit()
                 Text("経過: \(Self.elapsedString(from: startedAt, to: pausedAt))")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         case .finalizing:
-            Text("ファイルを保存しています…")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HStack(spacing: Theme.Spacing.xs) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("ファイルを保存しています…")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         case .failed:
             // A2: enum case 名 (`String(describing:)`) を出さない。
             // 具体的なメッセージは lastError 側で表示される。
-            Text("録音中にエラーが発生しました。下のメッセージを確認してください。")
+            Text("録音中にエラーが発生しました。詳細は下のメッセージをご確認ください。")
                 .font(.footnote)
                 .foregroundStyle(Theme.Palette.error)
         case .interrupted(let reason, _, _):
             // A1: 中断時は「停止して保存」の操作を必ず案内する。
-            Text("録音が中断されました: \(Self.label(for: reason))。下のボタンから停止して保存できます。")
+            Text("録音が中断されました（\(Self.label(for: reason))）。「録音を停止して保存」を押すと、ここまでの内容を保存できます。")
                 .font(.footnote)
                 .foregroundStyle(Theme.Palette.warning)
                 .fixedSize(horizontal: false, vertical: true)
@@ -290,17 +295,6 @@ struct MenuBarContentView: View {
             .buttonStyle(.bordered)
             .controlSize(.regular)
             .help("過去の録音と文字起こしを表示します")
-
-            Button(role: .destructive) {
-                NSApplication.shared.terminate(nil)
-            } label: {
-                Text("終了")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderless)
-            .keyboardShortcut("q", modifiers: .command)
-            .controlSize(.regular)
-            .help("localVoiceRec を終了します (⌘Q)")
         }
     }
 

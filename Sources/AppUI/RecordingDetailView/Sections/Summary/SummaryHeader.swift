@@ -14,7 +14,7 @@ struct SummaryHeader<Trailing: View>: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Label("要約", systemImage: "doc.text.magnifyingglass")
-                    .font(.headline)
+                    .font(Theme.Typography.sectionTitle)
                     .accessibilityAddTraits(.isHeader)
 
                 if let summary {

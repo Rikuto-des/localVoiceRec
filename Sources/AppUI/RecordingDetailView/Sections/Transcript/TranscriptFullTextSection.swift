@@ -47,7 +47,7 @@ struct TranscriptFullTextSection: View {
         return DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Slack や Notion に貼り付けやすい、整形済みプレーンテキストです。")
+                    Text("Slack や Notion にそのまま貼り付けられます。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -94,8 +94,7 @@ struct TranscriptFullTextSection: View {
             .padding(.top, Theme.Spacing.sm)
         } label: {
             Label("全文テキスト（コピー用）", systemImage: "text.alignleft")
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .font(Theme.Typography.subsectionTitle)
         }
         .padding(.top, Theme.Spacing.sm)
     }

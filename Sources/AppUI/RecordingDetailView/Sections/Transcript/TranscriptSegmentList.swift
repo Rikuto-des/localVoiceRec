@@ -65,7 +65,7 @@ struct TranscriptSegmentList: View {
     }
 
     private var matchCount: Int {
-        let trimmed = debouncedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return 0 }
         return segments.reduce(0) { count, seg in
             count + (seg.text.range(of: trimmed, options: [.caseInsensitive]) != nil ? 1 : 0)
@@ -82,9 +82,19 @@ struct TranscriptSegmentList: View {
             Text("一致するセグメントがありません")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            Text("検索語句やフィルタ条件を見直してください。")
+            Text("検索語句やフィルタ条件を変更してみてください。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            Button {
+                query = ""
+                debouncedQuery = ""
+                filter = .all
+            } label: {
+                Label("検索とフィルタをリセット", systemImage: "arrow.uturn.backward")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.top, Theme.Spacing.xs)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(Theme.Spacing.lg)
