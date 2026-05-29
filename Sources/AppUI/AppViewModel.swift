@@ -283,13 +283,19 @@ public final class AppViewModel {
             try await repository.create(recording)
             lastError = nil
             await refreshList()
-            // C3: 停止後に systemFlow を確認し、システム音声だけが完全無音だった場合に警告。
+            // C3: 停止後に systemFlow を確認し、システム音声 tap の IOProc が一度も
+            // 発火しなかった場合だけ警告する (= 権限拒否 / HW 異常 の真の問題)。
+            //
+            // `nonZeroBufferCount == 0` は「IOProc は動いているが全サンプル無音」
+            // を意味し、ユーザー側でシステム音声を何も再生しなかった (会議で
+            // 自分だけ話していた等) という正常パターンに該当する。これを
+            // 警告すると誤検知になるためチェックしない。
             // マイクが録れていない場合は別問題 (権限/HW) として警告を出さない (ノイズになる)。
             let finalFlow = await capture.systemFlowSnapshot()
             if micWasActive,
                let flow = finalFlow,
-               (flow.bytesReceived == 0 || flow.nonZeroBufferCount == 0) {
-                lastError = "システム音声が記録されませんでした。画面収録権限を確認してください（システム設定 → プライバシーとセキュリティ）"
+               flow.bytesReceived == 0 {
+                lastError = "システム音声 tap が起動できませんでした。画面収録権限を確認してください（システム設定 → プライバシーとセキュリティ）"
             }
             // 診断パネルの systemFlow も最新化しておく
             await refreshDiagnostics()
