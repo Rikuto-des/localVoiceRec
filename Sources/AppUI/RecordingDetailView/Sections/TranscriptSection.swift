@@ -63,9 +63,9 @@ extension RecordingDetailView {
         if let id = viewModel.selectedRecording?.id,
            viewModel.emptyTranscriptIDs.contains(id) {
             ContentUnavailableView {
-                Label("文字起こしできませんでした", systemImage: "speaker.slash")
+                Label("発話が検出されませんでした", systemImage: "text.bubble")
             } description: {
-                Text("無音または非対応言語の可能性があります。言語設定を確認してから「再実行」してください。")
+                Text("録音音声は保存されています。無音区間が多い、未対応言語、または録音が短い場合に起こります。言語設定を確認してから「再実行」してください。")
             } actions: {
                 Button {
                     if let recording = viewModel.selectedRecording {

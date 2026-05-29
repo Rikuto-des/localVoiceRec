@@ -259,10 +259,14 @@ private struct StatusBadge: View {
                 .help("文字起こし + 要約完了")
                 .accessibilityLabel("完了")
         case .emptyTranscript:
-            Image(systemName: "speaker.slash")
-                .foregroundStyle(.secondary)
-                .help("音声内容が検出されませんでした")
-                .accessibilityLabel("音声未検出")
+            // 録音音声自体は問題なく取れている。SpeechAnalyzer が発話を 1 つも
+            // 拾わなかったケース (会議で自分だけ話していた / 無音時間が多かった
+            // / 短い録音など) なので、エラー風の `speaker.slash` ではなく、
+            // 「中身が空の文字起こし」感のある outline bubble にする。
+            Image(systemName: "text.bubble")
+                .foregroundStyle(.tertiary)
+                .help("発話が検出されませんでした（録音音声は正常です）")
+                .accessibilityLabel("発話なし")
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(Theme.Palette.error)
@@ -280,7 +284,7 @@ private extension RecordingStatus {
         case .summarizing: return "要約中"
         case .transcribed: return "文字起こし済み"
         case .completed: return "文字起こしと要約が完了"
-        case .emptyTranscript: return "音声未検出"
+        case .emptyTranscript: return "発話なし"
         case .failed: return "処理失敗"
         }
     }
