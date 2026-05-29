@@ -16,6 +16,14 @@ public protocol RecordingRepository: Sendable {
     func delete(id: UUID, deleteFilesImmediately: Bool) async throws
     func deleteAll(deleteFilesImmediately: Bool) async throws
 
+    /// 指定 ID の録音タイトルを更新する。
+    ///
+    /// - 既存タイトルとの diff チェックは呼び出し側で行う(repo は冪等に上書きする)。
+    /// - 空文字 / 前後空白のみのタイトルは UI 側でガードする前提だが、repo は値をそのまま保存する。
+    /// - 該当 id が存在しなければ `RepositoryError.notFound(id)` を throw。
+    /// - 音声ファイル URL や startedAt 等の他フィールドは触らない。
+    func updateTitle(id: UUID, newTitle: String) async throws
+
     /// 録音一覧と各録音の状態 (segments/summary が存在するか) を 1 fetch で返す。
     ///
     /// 一覧バッジ用の `RecordingStatus` 算出時に、録音件数 N に対して

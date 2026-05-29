@@ -143,6 +143,15 @@ public actor RecordingRepositoryImpl: RecordingRepository {
         return try entity.toDTO()
     }
 
+    public func updateTitle(id: UUID, newTitle: String) async throws {
+        // 該当 id が無ければ notFound。空文字/前後空白の正規化は呼び出し側 (UI) の責務。
+        guard let entity = try fetchEntity(id: id) else {
+            throw RepositoryError.notFound(id)
+        }
+        entity.title = newTitle
+        try saveOrThrow()
+    }
+
     public func delete(id: UUID, deleteFilesImmediately: Bool) async throws {
         guard let entity = try fetchEntity(id: id) else { return }
         let micRel = entity.micRelativePath

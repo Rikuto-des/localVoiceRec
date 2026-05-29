@@ -73,6 +73,17 @@ struct RecordingListView: View {
                             .tag(recording.id as Recording.ID?)
                             .contextMenu {
                                 Button {
+                                    // 一旦選択 → 詳細ビュー側で編集モードに入るよう
+                                    // requestRenameRecordingID をセット。
+                                    selectedID = recording.id
+                                    Task {
+                                        await viewModel.select(recording)
+                                        viewModel.requestRenameRecordingID = recording.id
+                                    }
+                                } label: {
+                                    Label("リネーム…", systemImage: "pencil")
+                                }
+                                Button {
                                     FinderReveal.openRecordingFolder(for: recording)
                                 } label: {
                                     Label("Finder で開く", systemImage: "folder")

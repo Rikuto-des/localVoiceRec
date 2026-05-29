@@ -439,6 +439,70 @@ struct ListWithStatusTests {
     }
 }
 
+@Suite("RecordingRepositoryImpl — updateTitle")
+struct UpdateTitleTests {
+    @Test func updateTitlePersistsNewValue() async throws {
+        let repo = try makeInMemoryRepo()
+        let dto = try makeRecordingDTO(title: "Old Title")
+        try await repo.create(dto)
+
+        try await repo.updateTitle(id: dto.id, newTitle: "New Title")
+
+        let loaded = try await repo.get(id: dto.id)
+        #expect(loaded?.title == "New Title")
+    }
+
+    @Test func updateTitleThrowsNotFoundForMissingID() async throws {
+        let repo = try makeInMemoryRepo()
+        let missing = UUID()
+        await #expect(throws: RepositoryError.notFound(missing)) {
+            try await repo.updateTitle(id: missing, newTitle: "X")
+        }
+    }
+
+    @Test func updateTitleDoesNotMutateOtherFields() async throws {
+        let repo = try makeInMemoryRepo()
+        let dto = try makeRecordingDTO(title: "Before")
+        try await repo.create(dto)
+
+        try await repo.updateTitle(id: dto.id, newTitle: "After")
+
+        let loaded = try await repo.get(id: dto.id)
+        #expect(loaded != nil)
+        #expect(loaded?.id == dto.id)
+        #expect(loaded?.startedAt == dto.startedAt)
+        #expect(loaded?.endedAt == dto.endedAt)
+        #expect(loaded?.createdAt == dto.createdAt)
+        #expect(loaded?.micAudioURL.standardizedFileURL == dto.micAudioURL.standardizedFileURL)
+        #expect(loaded?.systemAudioURL.standardizedFileURL == dto.systemAudioURL.standardizedFileURL)
+    }
+
+    @Test func updateTitleAcceptsEmptyStringAsIs() async throws {
+        // repo は値をそのまま保存する契約 (空文字バリデーションは UI 側)。
+        let repo = try makeInMemoryRepo()
+        let dto = try makeRecordingDTO(title: "non-empty")
+        try await repo.create(dto)
+
+        try await repo.updateTitle(id: dto.id, newTitle: "")
+
+        let loaded = try await repo.get(id: dto.id)
+        #expect(loaded?.title == "")
+    }
+
+    @Test func updateTitleIsIdempotent() async throws {
+        let repo = try makeInMemoryRepo()
+        let dto = try makeRecordingDTO(title: "Same")
+        try await repo.create(dto)
+
+        // 同じ値での再呼び出しでも throw しない。
+        try await repo.updateTitle(id: dto.id, newTitle: "Same")
+        try await repo.updateTitle(id: dto.id, newTitle: "Same")
+
+        let loaded = try await repo.get(id: dto.id)
+        #expect(loaded?.title == "Same")
+    }
+}
+
 @Suite("RecordingRepositoryImpl — file deletion")
 struct FileDeletionTests {
     @Test func deleteFilesImmediatelyRemovesWAVs() async throws {

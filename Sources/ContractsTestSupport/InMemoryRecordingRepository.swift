@@ -54,6 +54,22 @@ public actor InMemoryRecordingRepository: RecordingRepository {
         recordings[id]
     }
 
+    public func updateTitle(id: UUID, newTitle: String) async throws {
+        // Recording は値型なので、title を差し替えた新インスタンスで置き換える。
+        guard let existing = recordings[id] else {
+            throw RepositoryError.notFound(id)
+        }
+        recordings[id] = Recording(
+            id: existing.id,
+            title: newTitle,
+            startedAt: existing.startedAt,
+            endedAt: existing.endedAt,
+            micAudioURL: existing.micAudioURL,
+            systemAudioURL: existing.systemAudioURL,
+            createdAt: existing.createdAt
+        )
+    }
+
     public func delete(id: UUID, deleteFilesImmediately: Bool) async throws {
         recordings.removeValue(forKey: id)
         segments.removeValue(forKey: id)

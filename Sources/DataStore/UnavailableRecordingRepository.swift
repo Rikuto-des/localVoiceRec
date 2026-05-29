@@ -29,6 +29,10 @@ public actor UnavailableRecordingRepository: RecordingRepository {
         throw RepositoryError.storeUnavailable
     }
 
+    public func updateTitle(id: UUID, newTitle: String) async throws {
+        throw RepositoryError.storeUnavailable
+    }
+
     public func deleteAll(deleteFilesImmediately: Bool) async throws {
         throw RepositoryError.storeUnavailable
     }

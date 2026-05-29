@@ -106,6 +106,11 @@ public final class AppViewModel {
     /// 失敗 (lastError) とは別の状態として UI で区別する。
     public private(set) var emptyTranscriptIDs: Set<UUID> = []
 
+    /// リスト等からタイトル編集モードを起動したい録音 ID。
+    /// 詳細ビュー側 (`HeaderSection`) が `onChange` で監視し、編集モードに入る。
+    /// 起動側 (リストの「リネーム…」) が代入し、起動された側は使い終わったら nil に戻す。
+    public var requestRenameRecordingID: UUID?
+
     public init(
         capture: any AudioCaptureService,
         repository: any RecordingRepository,
@@ -625,6 +630,42 @@ public final class AppViewModel {
     /// View 側で `lastError` を更新したい場合に使う簡易セッタ。
     func reportExportFailure(_ message: String) {
         lastError = message
+    }
+
+    // MARK: - Intents: Rename
+
+    /// 録音タイトルを変更する。
+    ///
+    /// 既存タイトルとの diff チェック / 空文字ガードは本メソッドで行う:
+    /// - 前後空白を trim した結果が空、または既存タイトルと同じなら no-op
+    /// - それ以外は repository に新タイトルで上書きを依頼し、成功時に一覧と
+    ///   `selectedRecording` を新タイトル付きで作り直して差し替える
+    ///
+    /// 失敗時は `lastError` に日本語メッセージを入れる (既存 `deleteRecording`
+    /// などと同じ運用)。
+    public func renameRecording(_ recording: Recording, newTitle: String) async {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 空文字 / 同タイトルは保存せず no-op (repository の不要呼び出しも避ける)
+        guard !trimmed.isEmpty, trimmed != recording.title else { return }
+        do {
+            try await repository.updateTitle(id: recording.id, newTitle: trimmed)
+            await refreshList()
+            // 選択中の録音が同じならタイトルを差し替えた新インスタンスに置き換える
+            if let selected = selectedRecording, selected.id == recording.id {
+                selectedRecording = Recording(
+                    id: selected.id,
+                    title: trimmed,
+                    startedAt: selected.startedAt,
+                    endedAt: selected.endedAt,
+                    micAudioURL: selected.micAudioURL,
+                    systemAudioURL: selected.systemAudioURL,
+                    createdAt: selected.createdAt
+                )
+            }
+            lastError = nil
+        } catch {
+            lastError = userMessage(for: error, context: "renameRecording")
+        }
     }
 
     // MARK: - Intents: Delete

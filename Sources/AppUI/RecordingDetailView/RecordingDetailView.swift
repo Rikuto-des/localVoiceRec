@@ -31,6 +31,12 @@ struct RecordingDetailView: View {
     @State var showHintField: Bool = false
     @State var showTranscribeReconfirm: Bool = false
 
+    // ─── タイトルインライン編集 (HeaderSection が利用) ───
+    /// タイトル編集モードか。`HeaderSection` の `TitleEditableView` から bindings 経由で参照する。
+    @State var isEditingTitle: Bool = false
+    /// 編集中のドラフト文字列。
+    @State var draftTitle: String = ""
+
     // ─── 全文テキスト関連 (S15) ───
     @State var isFullTextExpanded: Bool = false
     @State var fullTextCopyConfirmedAt: Date?
