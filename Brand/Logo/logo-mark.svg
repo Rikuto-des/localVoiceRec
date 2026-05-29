@@ -1,47 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   localVoiceRec — symbol mark (1024 squircle)
-  Style: Aurora gradient, matches site header logo.
+  Style: flat, two-color (charcoal + teal). No gradients.
   Palette:
-    bg gradient   #A569FF (violet) → #3D5AFE (blue) → #3AFFF0 (cyan)
-    bars          white → 88% white (subtle vertical gradient)
-    seal          #FF6FD8 (pink, radial highlight)
+    background  #0D1115 (charcoal)
+    bars + dot  #2DD4BF (teal-400)
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <linearGradient id="lvrBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%"  stop-color="#A569FF"/>
-      <stop offset="50%" stop-color="#3D5AFE"/>
-      <stop offset="100%" stop-color="#3AFFF0"/>
-    </linearGradient>
-    <linearGradient id="lvrBars" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"   stop-color="#FFFFFF"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.88"/>
-    </linearGradient>
-    <radialGradient id="lvrSeal" cx="0.35" cy="0.35" r="0.8">
-      <stop offset="0%"   stop-color="#FFB8E0"/>
-      <stop offset="60%"  stop-color="#FF6FD8"/>
-      <stop offset="100%" stop-color="#E84CB5"/>
-    </radialGradient>
-  </defs>
-
-  <!-- squircle background (matches header SVG rx=14 @64 → rx=224 @1024) -->
-  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#lvrBg)"/>
-
-  <!-- subtle inner glass border -->
-  <rect x="36" y="36" width="952" height="952" rx="200" ry="200"
-        fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="2"/>
-
-  <!-- waveform: 5 bars (positions scaled exactly 16x from header @ viewBox 64) -->
-  <g fill="url(#lvrBars)">
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="#0D1115"/>
+  <g fill="#2DD4BF">
     <rect x="248" y="392" width="64" height="240" rx="32" ry="32"/>
     <rect x="352" y="288" width="64" height="448" rx="32" ry="32"/>
     <rect x="456" y="216" width="72" height="592" rx="36" ry="36"/>
     <rect x="568" y="320" width="64" height="384" rx="32" ry="32"/>
     <rect x="672" y="416" width="64" height="192" rx="32" ry="32"/>
+    <circle cx="800" cy="224" r="68"/>
   </g>
-
-  <!-- recording dot (top-right): cx=50/cy=14 @64 → cx=800/cy=224 @1024, r=4.25→68 -->
-  <circle cx="800" cy="224" r="68" fill="url(#lvrSeal)"/>
-  <circle cx="784" cy="208" r="14" fill="#FFFFFF" fill-opacity="0.32"/>
 </svg>

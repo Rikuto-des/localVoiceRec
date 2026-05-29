@@ -2,49 +2,24 @@
 <!--
   DMG mount-screen background — 540 x 380 (logical points).
   Designed at @2x = 1080 x 760 for retina sharpness.
-  Aesthetic: aurora gradient, matches app icon and site header.
+  Style: flat, light canvas + single teal accent (matches app icon palette).
+  No gradients.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 760" width="1080" height="760">
-  <defs>
-    <!-- soft aurora wash for top band -->
-    <linearGradient id="dmgTopBand" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"  stop-color="#A569FF" stop-opacity="0.10"/>
-      <stop offset="50%" stop-color="#3D5AFE" stop-opacity="0.10"/>
-      <stop offset="100%" stop-color="#3AFFF0" stop-opacity="0.10"/>
-    </linearGradient>
-    <linearGradient id="dmgArrow" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"  stop-color="#A569FF"/>
-      <stop offset="100%" stop-color="#3D5AFE"/>
-    </linearGradient>
-    <radialGradient id="dmgSeal" cx="0.35" cy="0.35" r="0.8">
-      <stop offset="0%"   stop-color="#FFB8E0"/>
-      <stop offset="60%"  stop-color="#FF6FD8"/>
-      <stop offset="100%" stop-color="#E84CB5"/>
-    </radialGradient>
-    <radialGradient id="dmgGlow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0%"   stop-color="#A569FF" stop-opacity="0.06"/>
-      <stop offset="100%" stop-color="#A569FF" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-
   <!-- clean light background -->
   <rect x="0" y="0" width="1080" height="760" fill="#FAFAFB"/>
 
-  <!-- subtle aurora glow centered behind the install action -->
-  <ellipse cx="540" cy="440" rx="520" ry="240" fill="url(#dmgGlow)"/>
-
-  <!-- top strip: tinted band -->
-  <rect x="0" y="0" width="1080" height="60" fill="url(#dmgTopBand)"/>
-  <line x1="0" y1="60" x2="1080" y2="60" stroke="#1B1816" stroke-opacity="0.08" stroke-width="1"/>
+  <!-- top rule -->
+  <line x1="0" y1="60" x2="1080" y2="60" stroke="#0D1115" stroke-opacity="0.08" stroke-width="1"/>
 
   <!-- top strip: brand wordmark on left, edition note on right -->
-  <g transform="translate(56,38)" fill="#1B1816">
+  <g transform="translate(56,38)" fill="#0D1115">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="700" font-size="22"
           letter-spacing="-0.5">localVoiceRec</text>
   </g>
-  <g transform="translate(1024,38)" fill="#1B1816" fill-opacity="0.55" text-anchor="end">
+  <g transform="translate(1024,38)" fill="#0D1115" fill-opacity="0.55" text-anchor="end">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="500" font-size="14"
@@ -52,14 +27,14 @@
   </g>
 
   <!-- bottom rule -->
-  <line x1="0" y1="700" x2="1080" y2="700" stroke="#1B1816" stroke-opacity="0.08" stroke-width="1"/>
-  <g transform="translate(56,732)" fill="#1B1816" fill-opacity="0.45">
+  <line x1="0" y1="700" x2="1080" y2="700" stroke="#0D1115" stroke-opacity="0.08" stroke-width="1"/>
+  <g transform="translate(56,732)" fill="#0D1115" fill-opacity="0.45">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="500" font-size="13"
           letter-spacing="1.6">LOCAL · NO NETWORK · NOTARIZED</text>
   </g>
-  <g transform="translate(1024,732)" fill="#1B1816" fill-opacity="0.45" text-anchor="end">
+  <g transform="translate(1024,732)" fill="#0D1115" fill-opacity="0.45" text-anchor="end">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="500" font-size="13"
@@ -67,13 +42,13 @@
   </g>
 
   <!-- center headline -->
-  <g transform="translate(540,170)" fill="#1B1816" text-anchor="middle">
+  <g transform="translate(540,170)" fill="#0D1115" text-anchor="middle">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="700" font-size="44"
           letter-spacing="-1">Install localVoiceRec</text>
   </g>
-  <g transform="translate(540,212)" fill="#1B1816" fill-opacity="0.65" text-anchor="middle">
+  <g transform="translate(540,212)" fill="#0D1115" fill-opacity="0.65" text-anchor="middle">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="500" font-size="20"
@@ -85,16 +60,16 @@
     create-dmg places icons at (140,200) and (400,200) in 540x380 space.
     That maps to (280,400) and (800,400) in our 1080x760 canvas.
   -->
-  <g fill="none" stroke="url(#dmgArrow)" stroke-width="6" stroke-linecap="round">
+  <g fill="none" stroke="#2DD4BF" stroke-width="6" stroke-linecap="round">
     <path d="M 410 400 Q 480 376, 555 400 T 670 400"/>
   </g>
   <!-- arrowhead -->
-  <g fill="#3D5AFE">
+  <g fill="#2DD4BF">
     <polygon points="678,400 646,384 646,416"/>
   </g>
 
   <!-- caption above the arrow -->
-  <g transform="translate(540,358)" fill="#3D5AFE" text-anchor="middle">
+  <g transform="translate(540,358)" fill="#2DD4BF" text-anchor="middle">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="700" font-size="18"
@@ -102,22 +77,21 @@
   </g>
 
   <!-- subtle slot guides where icons will sit (just a hint, not full circles) -->
-  <g stroke="#1B1816" stroke-opacity="0.07" stroke-width="1.5" fill="none">
+  <g stroke="#0D1115" stroke-opacity="0.07" stroke-width="1.5" fill="none">
     <rect x="220" y="340" width="120" height="120" rx="20"/>
     <rect x="740" y="340" width="120" height="120" rx="20"/>
   </g>
 
   <!-- bottom helper text -->
-  <g transform="translate(540,620)" fill="#1B1816" fill-opacity="0.50" text-anchor="middle">
+  <g transform="translate(540,620)" fill="#0D1115" fill-opacity="0.50" text-anchor="middle">
     <text x="0" y="0"
           font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Helvetica, Arial, sans-serif"
           font-weight="500" font-size="16"
           letter-spacing="0.2">Open the Applications folder afterward to launch.</text>
   </g>
 
-  <!-- corner seal mark, top-right (pink, matches recording dot in app icon) -->
+  <!-- corner accent mark (top-right): solid teal, matches recording dot in app icon -->
   <g transform="translate(1004,108)">
-    <circle cx="0" cy="0" r="18" fill="url(#dmgSeal)"/>
-    <circle cx="-5" cy="-5" r="4" fill="#FFFFFF" fill-opacity="0.45"/>
+    <circle cx="0" cy="0" r="18" fill="#2DD4BF"/>
   </g>
 </svg>
