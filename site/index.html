@@ -11,6 +11,18 @@
   <meta property="og:type" content="website" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
+  <script>
+    // モーション初期化: reduce-motion でないときだけ .lvr-anim を付与する。
+    // CSS は .lvr-anim 配下にスコープされているので、付与しないと完全に静的レイアウト。
+    // <head> で同期的に付けることで初回描画前にスタイルが確定し、ちらつきを防ぐ。
+    (function () {
+      try {
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          document.documentElement.classList.add('lvr-anim');
+        }
+      } catch (_) { /* 古いブラウザ: 静的のまま */ }
+    })();
+  </script>
 </head>
 <body>
 
@@ -70,14 +82,14 @@
     </div>
   </div>
   <figure class="hero-shot">
-    <img src="screenshots/menubar.png" alt="メニューバーから localVoiceRec を開いたウィンドウ。録音開始 / 録音一覧を開く / 終了の 3 つの操作。" />
+    <img class="parallax-tilt" src="screenshots/menubar.png" alt="メニューバーから localVoiceRec を開いたウィンドウ。録音開始 / 録音一覧を開く / 終了の 3 つの操作。" />
   </figure>
 </section>
 
 <!-- ─────────────────────────────────────────────
      Detail screenshot — full bleed product shot
      ───────────────────────────────────────────── -->
-<section class="feature alt">
+<section class="feature alt reveal">
   <div class="wrap-wide">
     <p class="feature-eyebrow">In the app</p>
     <h2>すべての工程を、ひとつのウィンドウで。</h2>
@@ -86,7 +98,7 @@
       左右に並ぶレイアウトで切り替えなしに完結します。
     </p>
     <figure class="app-shot">
-      <img src="screenshots/detail.png" alt="録音一覧と詳細ウィンドウ。左に Meeting エントリ、右に Mic / System の波形と話者ごとの吹き出し、要約まで縦に並ぶ。" />
+      <img class="parallax-tilt" src="screenshots/detail.png" alt="録音一覧と詳細ウィンドウ。左に Meeting エントリ、右に Mic / System の波形と話者ごとの吹き出し、要約まで縦に並ぶ。" />
     </figure>
   </div>
 </section>
@@ -94,7 +106,7 @@
 <!-- ─────────────────────────────────────────────
      Manifesto / 3 pillars (dark section)
      ───────────────────────────────────────────── -->
-<section class="feature dark">
+<section class="feature dark reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Privacy</p>
     <h2>送らない、ではなく、<em>送れない</em>。</h2>
@@ -135,7 +147,7 @@
 <!-- ─────────────────────────────────────────────
      Inside the bundle (entitlements artifact)
      ───────────────────────────────────────────── -->
-<section class="feature">
+<section class="feature reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Inside</p>
     <h2>アプリの中身を、覗いてみる。</h2>
@@ -162,7 +174,7 @@
 <!-- ─────────────────────────────────────────────
      How it works
      ───────────────────────────────────────────── -->
-<section class="feature alt">
+<section class="feature alt reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Pipeline</p>
     <h2>3 つの工程。<br />すべて端末内で。</h2>
@@ -189,7 +201,7 @@
 <!-- ─────────────────────────────────────────────
      Export
      ───────────────────────────────────────────── -->
-<section class="feature">
+<section class="feature reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Export</p>
     <h2>議事録は、テキストになる。</h2>
@@ -229,7 +241,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 <!-- ─────────────────────────────────────────────
      Spec / requirements
      ───────────────────────────────────────────── -->
-<section class="feature alt">
+<section class="feature alt reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Requirements</p>
     <h2>動作環境とサイズ</h2>
@@ -251,7 +263,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 <!-- ─────────────────────────────────────────────
      Download
      ───────────────────────────────────────────── -->
-<section class="download" id="download">
+<section class="download reveal" id="download">
   <div class="wrap">
     <p class="feature-eyebrow">Download</p>
     <h2>今すぐ、はじめる。</h2>
@@ -303,7 +315,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 <!-- ─────────────────────────────────────────────
      FAQ
      ───────────────────────────────────────────── -->
-<section class="feature">
+<section class="feature reveal">
   <div class="wrap">
     <p class="feature-eyebrow">FAQ</p>
     <h2>よくある質問</h2>
@@ -391,6 +403,7 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 </footer>
 
 <script>
+  // SHA コピーボタン
   document.getElementById('copy-sha')?.addEventListener('click', async (e) => {
     const sha = document.getElementById('sha').textContent.trim();
     try {
@@ -403,6 +416,55 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
       window.prompt('SHA-256', sha);
     }
   });
+
+  // モーション (reveal + parallax) は <html class="lvr-anim"> が付いているときだけ走らせる。
+  // <head> の inline script が reduce-motion ユーザーには付けない設計。
+  (function () {
+    if (!document.documentElement.classList.contains('lvr-anim')) return;
+
+    // 1) スクロールでセクションがフェードイン
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        }
+      }, { threshold: 0.08, rootMargin: '0px 0px -8% 0px' });
+      document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+    } else {
+      // 古いブラウザは fallback で全部表示
+      document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
+    }
+
+    // 2) スクリーンショットのパララックス: 画面中央からの距離に応じて Y を僅かにずらす
+    const tilts = Array.from(document.querySelectorAll('.parallax-tilt'));
+    if (tilts.length) {
+      let ticking = false;
+      const update = () => {
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        const center = vh / 2;
+        for (const el of tilts) {
+          const r = el.getBoundingClientRect();
+          // 画面に全く入っていない要素はスキップ (微妙な省力化)
+          if (r.bottom < -200 || r.top > vh + 200) continue;
+          const elCenter = r.top + r.height / 2;
+          const distance = elCenter - center;
+          // ±30px に clamp。係数 0.06 で滑らかさを保つ
+          const ty = Math.max(-30, Math.min(30, -distance * 0.06));
+          el.style.setProperty('--ty', ty.toFixed(2) + 'px');
+        }
+        ticking = false;
+      };
+      const onScroll = () => {
+        if (!ticking) { requestAnimationFrame(update); ticking = true; }
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll, { passive: true });
+      update();
+    }
+  })();
 </script>
 
 </body>
