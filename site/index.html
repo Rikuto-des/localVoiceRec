@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>localVoiceRec — 会議録音と議事録を、Mac の中だけで。</title>
-  <meta name="description" content="約 1MB の DMG、外部依存ゼロ、ネットワーク権限なし。OS 標準の AEC とオンデバイス文字起こし／要約で、録音から議事録までを Mac の中だけで完結させる macOS アプリ。" />
+  <title>localVoiceRec — Mac で会議を録音して議事録にする</title>
+  <meta name="description" content="Mac で会議を録音し、文字起こしと議事録の生成までデバイスの中で行う macOS アプリ。ネットワーク権限なし。" />
   <meta name="theme-color" content="#0D1115" />
   <meta property="og:title" content="localVoiceRec" />
-  <meta property="og:description" content="約 1MB の DMG。AEC・文字起こし・要約まで、すべてデバイスの中で。" />
+  <meta property="og:description" content="録音、文字起こし、要約まで、デバイスの中で動きます。" />
   <meta property="og:type" content="website" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
@@ -57,10 +57,10 @@
 <section class="hero">
   <div class="wrap">
     <p class="hero-eyebrow">localVoiceRec</p>
-    <h1>会議録音と議事録を、<br />Mac の中だけで。</h1>
+    <h1>Mac で会議を録音して<br />議事録にする。</h1>
     <p class="hero-lead">
-      約 1MB の DMG に、OS 標準の AEC、録音と同時進行の文字起こし、<br />
-      オンデバイス要約まで。外部依存ゼロ、ネットワーク権限なし。
+      録音、文字起こし、要約まで、デバイスの中で動きます。<br />
+      アプリにネットワーク権限を付けていません。
     </p>
     <div class="hero-cta">
       <a class="btn-pill btn-pill-primary" href="#download">
@@ -81,10 +81,9 @@
 <section class="feature alt reveal">
   <div class="wrap-wide">
     <p class="feature-eyebrow">In the app</p>
-    <h2>すべての工程を、ひとつのウィンドウで。</h2>
+    <h2>1 画面で完結。</h2>
     <p class="feature-lead">
-      録音中からリアルタイムに伸びる文字起こし、チャンネル別の波形、停止後の構造化要約まで。
-      左右に並ぶレイアウトで切り替えなしに完結します。
+      録音、波形、文字起こし、要約まで、ひとつのウィンドウに並びます。
     </p>
     <figure class="app-shot">
       <img class="parallax-tilt" src="screenshots/detail.png" alt="録音一覧と詳細ウィンドウ。左に Meeting エントリ、右に Mic / System の波形と話者ごとの吹き出し、要約まで縦に並ぶ。" />
@@ -98,10 +97,10 @@
 <section class="feature dark reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Privacy</p>
-    <h2>送らない、ではなく、<em>送れない</em>。</h2>
+    <h2>外には送りません。</h2>
     <p class="feature-lead">
-      ネットワーク権限を持たないため、アプリは外部と通信する経路自体を持ちません。
-      AEC・文字起こし・要約は、いずれも OS 標準フレームワーク内で完結します。
+      アプリにネットワーク権限を付けていないので、外と通信できません。
+      文字起こしと要約は macOS の機能で動きます。
     </p>
     <div class="feature-grid">
       <div class="feature-card">
@@ -109,8 +108,8 @@
           <path d="M16 4 L26 9 V16 C26 22 21 27 16 28 C11 27 6 22 6 16 V9 Z"/>
           <path d="M11 16 L15 20 L21 13"/>
         </svg>
-        <h3>ネットワーク権限ゼロ</h3>
-        <p>App Sandbox を有効化したうえで、<code>network.client</code> / <code>network.server</code> をいずれも付与していません。OS レベルで通信できません。</p>
+        <h3>ネットワーク権限なし</h3>
+        <p>App Sandbox 下で <code>network.client</code> も <code>network.server</code> も付けていません。OS が通信を許可しません。</p>
       </div>
       <div class="feature-card">
         <svg class="feature-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -118,16 +117,16 @@
           <path d="M16 14 V20"/>
           <path d="M12 17 H20"/>
         </svg>
-        <h3>オフラインで完結</h3>
-        <p>文字起こしは macOS 26 の SpeechAnalyzer、要約は Foundation Models（オンデバイス）。録音から議事録までインターネットは不要です。</p>
+        <h3>オフラインで動く</h3>
+        <p>文字起こしは macOS の SpeechAnalyzer、要約は Foundation Models。どちらもデバイス内で動きます。</p>
       </div>
       <div class="feature-card">
         <svg class="feature-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M8 22 L8 13 L16 8 L24 13 L24 22"/>
           <path d="M12 22 V17 H20 V22"/>
         </svg>
-        <h3>ボットを増やさないローカル録音</h3>
-        <p>Zoom / Teams / Meet に外部ボットを参加させる代わりに、Mac 自身が再生・収音する音声を Core Audio process tap で取得します。録音データは端末から一切外に出ません。会議参加者への録音同意の取得は、利用者の責任で事前に行ってください。</p>
+        <h3>ボットを参加させない</h3>
+        <p>Zoom / Teams / Meet にボットを入れずに、Mac が再生中の音と自分のマイクを直接録ります。録音同意は事前に取得してください。</p>
       </div>
     </div>
   </div>
@@ -139,10 +138,9 @@
 <section class="feature reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Inside</p>
-    <h2>アプリの中身を、覗いてみる。</h2>
+    <h2>権限は確認できます。</h2>
     <p class="feature-lead">
-      <code>codesign --display --entitlements -</code> でアプリの権限を確認すると、
-      ネットワーク系のキーが存在しないことが分かります。
+      <code>codesign</code> で entitlement を表示すると、ネットワーク系のキーが入っていないことが分かります。
     </p>
     <figure class="codeblock">
       <figcaption>codesign output · 抜粋</figcaption>
@@ -166,22 +164,22 @@
 <section class="feature alt reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Pipeline</p>
-    <h2>3 つの工程。<br />すべて端末内で。</h2>
+    <h2>中で起きていること</h2>
     <ol class="steps">
       <li>
-        <p class="step-num">01 — 収録</p>
-        <h3>マイクとシステム音声を別チャンネルで。</h3>
-        <p>自分の声は <code>AVAudioEngine</code> + AUVoiceProcessing IO で OS 標準の AEC・ノイズ抑制・自動ゲイン調整を適用。相手の声は Core Audio の process tap で取得し、System 側はロックフリーの SPSC リングバッファで受け取ります。話者分離は AI 推定ではなくチャンネルで確定するため、誤判定が起きません。</p>
+        <p class="step-num">01 — 録音</p>
+        <h3>マイクとシステム音声を別々に録る。</h3>
+        <p>自分の声には macOS の AEC・ノイズ抑制・自動ゲイン調整がかかります。相手の声は process tap で Mac の再生音から直接取ります。チャンネルが分かれているので、話者が混ざりません。</p>
       </li>
       <li>
-        <p class="step-num">02 — 録音と同時進行の文字起こし</p>
-        <h3>同じ音声バッファを 3 経路に同時配信。</h3>
-        <p>1 つの PCM バッファを、(a) WAV ファイル書き込み、(b) 波形メーター、(c) SpeechAnalyzer への投入、に同期 fan-out します。バッファのコピーを増やさない 1-pass 構造のため、録音中から日本語・英語の文字起こしが伸びていき、停止と同時に確定済みテキストが揃います。</p>
+        <p class="step-num">02 — 文字起こし</p>
+        <h3>録音と同時に進む。</h3>
+        <p>SpeechAnalyzer に音声を流し込みながら、ファイル書き込みと波形表示も同じバッファでやっています。録音を止めた時点でテキストが揃っています。日本語・英語に対応。</p>
       </li>
       <li>
-        <p class="step-num">03 — 構造化要約</p>
-        <h3>議事録のかたちに。</h3>
-        <p>Foundation Models の <code>@Generable</code> で、概要・決定事項・アクションアイテム・未解決の問い・レビュー項目に整理します。</p>
+        <p class="step-num">03 — 要約</p>
+        <h3>議事録のかたちに整理する。</h3>
+        <p>Foundation Models で、概要・決定事項・アクションアイテム・未解決の問いに分けます。</p>
       </li>
     </ol>
   </div>
@@ -193,10 +191,9 @@
 <section class="feature reveal">
   <div class="wrap">
     <p class="feature-eyebrow">Export</p>
-    <h2>議事録は、テキストになる。</h2>
+    <h2>Markdown とテキストで書き出し。</h2>
     <p class="feature-lead">
-      詳細画面からエクスポートすれば、Slack や Notion にそのまま貼り付けられます。
-      Markdown とプレーンテキストの 2 形式に対応。
+      Slack や Notion にそのまま貼り付けられます。
     </p>
     <figure class="codeblock codeblock-md">
       <figcaption>Meeting_20260527.md</figcaption>
@@ -255,9 +252,9 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 <section class="download reveal" id="download">
   <div class="wrap">
     <p class="feature-eyebrow">Download</p>
-    <h2>今すぐ、はじめる。</h2>
+    <h2>ダウンロード</h2>
     <p class="feature-lead">
-      Developer ID 署名 + Notarization 済み。ダウンロード後の Gatekeeper 警告はありません。
+      署名と公証済み。Gatekeeper の警告は出ません。
     </p>
     <div class="download-card">
       <div class="download-version-row">
@@ -280,13 +277,12 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
 
       <div class="download-note">
         <strong>v0.1.0 — 初回リリース</strong><br />
-        ・マイク + システム音声の 2 チャンネル録音 (Linear PCM / WAV)<br />
-        ・AUVoiceProcessing IO による AEC・ノイズ抑制・AGC<br />
-        ・録音と同時進行のオンデバイス文字起こし (SpeechAnalyzer)<br />
-        ・Foundation Models によるオンデバイス構造化要約<br />
-        ・録音一覧 / 詳細表示 / Markdown・テキストエクスポート<br />
-        ・スリープ / オーディオ HW 切替 / engine 構成変更を検知して安全停止<br />
-        ・ネットワーク権限ゼロ — App Sandbox + Developer ID 署名 + Notarization 済み
+        ・マイクとシステム音声を別々に録音 (WAV)<br />
+        ・録音と同時に文字起こし<br />
+        ・要約は Foundation Models<br />
+        ・Markdown / テキストで書き出し<br />
+        ・スリープや HW 切替の検知 → 安全に停止<br />
+        ・ネットワーク権限なし・署名・公証済み
       </div>
     </div>
 
@@ -310,63 +306,45 @@ Q3 の優先順位を整理し、Phase 1 から Phase 2 への
     <h2>よくある質問</h2>
     <div class="faq">
       <details>
-        <summary>本当に外部に送信していないのか？</summary>
+        <summary>本当に外に送信していない?</summary>
         <div class="answer">
-          App Sandbox を有効にしたうえで、<code>com.apple.security.network.client</code> と
-          <code>com.apple.security.network.server</code> のどちらも entitlement に
-          含めていません。OS がアプリのソケット作成を拒否します。
-          <code>codesign --display --entitlements -</code> で確認できます。
+          App Sandbox 下で、<code>com.apple.security.network.client</code> と <code>com.apple.security.network.server</code> をどちらも付けていません。OS がソケットの作成を拒否します。<code>codesign --display --entitlements -</code> で確認できます。
         </div>
       </details>
       <details>
-        <summary>Apple Intelligence のモデルは外部通信しているのでは？</summary>
+        <summary>Apple Intelligence は外部通信しているのでは?</summary>
         <div class="answer">
-          オンデバイスモデル（約 3B）が端末内で推論を行います。Private Cloud Compute への
-          フォールバックは本アプリでは使いません（ネットワーク entitlement がないため、
-          技術的に経路がない）。
+          オンデバイスモデルがデバイス内で動きます。Private Cloud Compute へのフォールバックはこのアプリでは使いません(ネットワーク権限がないので経路がありません)。
         </div>
       </details>
       <details>
-        <summary>会議参加者への録音の告知や同意は必要？</summary>
+        <summary>会議の相手に録音の告知や同意は必要?</summary>
         <div class="answer">
-          <strong>必要です。</strong>本アプリは会議参加者への告知や同意取得を自動化する機能を持ちません。
-          録音前に、利用者ご自身で全参加者に録音する旨を伝え、明示的な同意を得てください。
-          所属組織のポリシー、サービス利用規約、各国・地域の法令（盗聴・通信秘密に関する規定など）
-          に従う責任は利用者にあります。
-          無断録音は本アプリの想定する利用方法ではありません。
+          <strong>必要です。</strong>このアプリは同意取得を自動化しません。録音前に全参加者に伝えて、同意を得てください。所属組織のポリシー、サービス規約、各国の法令に従う責任は利用者にあります。
         </div>
       </details>
       <details>
-        <summary>録音データはどこに保存される？ ファイル形式は？</summary>
+        <summary>録音はどこに保存される? 形式は?</summary>
         <div class="answer">
-          アプリのサンドボックス内、
-          <code>~/Library/Containers/com.example.localVoiceRec/</code>
-          の下に保存されます。形式は Linear PCM (WAV) で、可逆・非圧縮。
-          アプリから個別／一括削除でき、削除時はファイル実体も同時に消去されます。
+          アプリのサンドボックス内 <code>~/Library/Containers/com.example.localVoiceRec/</code> に WAV で保存されます。アプリから個別または一括で削除でき、ファイル実体もそのとき消えます。
         </div>
       </details>
       <details>
-        <summary>録音中のマイクへの回り込み (スピーカーから出た相手の声) は文字起こしを汚さない？</summary>
+        <summary>マイクが拾った相手の声で、文字起こしが汚れない?</summary>
         <div class="answer">
-          マイク収音は <code>AVAudioEngine</code> の入力ノードに対して
-          <code>setVoiceProcessingEnabled(true)</code> を有効化し、macOS の AUVoiceProcessing IO を経由します。
-          OS 標準の AEC (エコーキャンセル)、ノイズ抑制、自動ゲイン調整がマイク側にかかるため、
-          ヘッドフォン未使用時の回り込みは大きく抑えられます。
+          マイク側に macOS の AEC・ノイズ抑制・自動ゲイン調整がかかります。ヘッドフォンを使わない場合の回り込みは大きく抑えられます。
         </div>
       </details>
       <details>
-        <summary>録音が終わってから文字起こしを待つ必要がある？</summary>
+        <summary>録音終了後、文字起こしを待つ必要は?</summary>
         <div class="answer">
-          ありません。1 つの音声バッファを「WAV への書き込み」「波形メーター」「SpeechAnalyzer への投入」に
-          同期 fan-out する 1-pass 構造のため、録音中からリアルタイムに文字起こしが伸びていきます。
-          停止と同時に確定済みのテキストが揃った状態になり、続けて要約を生成します。
+          ありません。録音中から文字起こしが進むので、停止した時点でテキストが揃っています。続けて要約が生成されます。
         </div>
       </details>
       <details>
-        <summary>ソースコードは公開されているか？</summary>
+        <summary>ソースコードは公開されている?</summary>
         <div class="answer">
-          仕様書・ソース・テスト・配布手順は GitHub で公開しています。
-          <a href="https://github.com/Rikuto-des/localVoiceRec">Rikuto-des/localVoiceRec</a>
+          GitHub で公開しています。<a href="https://github.com/Rikuto-des/localVoiceRec">Rikuto-des/localVoiceRec</a>
         </div>
       </details>
     </div>
