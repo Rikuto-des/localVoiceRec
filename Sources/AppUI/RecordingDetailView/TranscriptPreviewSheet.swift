@@ -106,11 +106,16 @@ struct TranscriptPreviewSheet: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Menu {
+                // 「保存…」は SwiftUI の sheet と fileExporter が同時に提示できないため、
+                // (1) まずシートを閉じる → (2) `onDismiss` で NSSavePanel を起動 という 2 段。
+                // ここでは format を親に通知し、即座に `dismiss()` でシートを畳む。
                 Button("会話ログ (.txt) として保存…") {
                     onRequestSave(.plainText)
+                    dismiss()
                 }
                 Button("Markdown (.md) として保存…") {
                     onRequestSave(.markdown)
+                    dismiss()
                 }
             } label: {
                 Label("ファイルに保存…", systemImage: "square.and.arrow.down")

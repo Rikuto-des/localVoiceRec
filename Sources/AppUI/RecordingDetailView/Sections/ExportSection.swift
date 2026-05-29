@@ -1,12 +1,24 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 import Contracts
 
 extension RecordingDetailView {
-    // MARK: - Export
+    // MARK: - Export (ログ表示シート + AppKit 保存パネル)
 
-    /// 「ログを表示」ボタン + プレビューシート + (シート内からの) ファイル保存ダイアログ。
-    /// SummarySection の `regenerateControls` 内から呼び出されて横並びで配置される。
+    /// 「ログを表示」ボタン + プレビューシート + (シート閉じた後の) `NSSavePanel` 保存ダイアログ。
+    ///
+    /// ## 保存フローを `NSSavePanel` にした経緯
+    /// 以前は SwiftUI の `.fileExporter` を親 View に attach していたが、
+    /// SwiftUI はひとつの View に対して同時に複数の sheet 系 modal を提示できないため、
+    /// シート (`.sheet(item:)`) が開いている間に `.fileExporter` を発火しても保存ダイアログが
+    /// 出ない (待機して何も起きないように見える) というバグになっていた。
+    ///
+    /// 対処として:
+    /// 1. シート内「保存…」を押すと、format を `pendingSaveFormat` に保存しつつ
+    ///    シートを即座に `dismiss()` する (TranscriptPreviewSheet 側)。
+    /// 2. シートの `onDismiss` で `pendingSaveFormat` を見て、AppKit の `NSSavePanel` を
+    ///    直接呼ぶ (SwiftUI の presentation manager と競合しない)。
     @ViewBuilder
     var exportControls: some View {
         Button {
@@ -25,29 +37,17 @@ extension RecordingDetailView {
             viewModel.isSummarizingSelected
         )
         .help("会話ログ / Markdown プレビューを開いて、コピーまたは保存できます")
-        .sheet(item: $previewMinutes) { minutes in
+        .sheet(item: $previewMinutes,
+               onDismiss: {
+                    // シートが閉じてから保存パネルを出す (SwiftUI の sheet 同時提示制約を回避)
+                    guard let format = pendingSaveFormat else { return }
+                    pendingSaveFormat = nil
+                    Task { await runSavePanel(format: format) }
+               }) { minutes in
             TranscriptPreviewSheet(minutes: minutes) { format in
-                // シート内の「保存…」から呼ばれる: 保存ダイアログを fileExporter で開く
-                Task { await prepareExport(format: format) }
-            }
-        }
-        .fileExporter(
-            isPresented: Binding(
-                get: { exportDocument != nil },
-                set: { newValue in
-                    if !newValue { exportDocument = nil }
-                }
-            ),
-            document: exportDocument,
-            contentType: utType(for: exportFormat),
-            defaultFilename: exportSuggestedName
-        ) { result in
-            switch result {
-            case .success:
-                exportDocument = nil
-            case .failure(let error):
-                viewModel.reportExportFailure("保存に失敗しました: \(error.localizedDescription)")
-                exportDocument = nil
+                // シート内の「保存…」が呼ぶ closure。フォーマットを覚えるだけ。
+                // 実際の NSSavePanel 起動は onDismiss 側。
+                pendingSaveFormat = format
             }
         }
     }
@@ -69,18 +69,40 @@ extension RecordingDetailView {
         }
     }
 
-    /// シート内の「保存…」から呼ばれる: 指定フォーマットで fileExporter のドキュメントを準備。
-    func prepareExport(format: ExportFormat) async {
+    /// シートが閉じた後に呼ばれる: 指定フォーマットで NSSavePanel を起動して保存する。
+    @MainActor
+    func runSavePanel(format: ExportFormat) async {
         guard let recording = viewModel.selectedRecording else { return }
         isPreparingExport = true
         defer { isPreparingExport = false }
+
+        // テキスト生成 (失敗したらエラー表示してそこで終わり)
+        let text: String
         do {
-            let text = try await viewModel.exportText(for: recording, format: format)
-            self.exportFormat = format
-            self.exportSuggestedName = suggestedFilename(for: recording, format: format)
-            self.exportDocument = MinutesExportDocument(text: text, format: format)
+            text = try await viewModel.exportText(for: recording, format: format)
         } catch {
-            viewModel.reportExportFailure("保存用データの生成に失敗しました: \(String(describing: error))")
+            viewModel.reportExportFailure("保存用データの生成に失敗しました: \(error.localizedDescription)")
+            return
+        }
+
+        // AppKit の保存パネル
+        let panel = NSSavePanel()
+        panel.title = "ログを保存"
+        panel.nameFieldStringValue = suggestedFilename(for: recording, format: format)
+        panel.allowedContentTypes = [utType(for: format)]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        // System.allowedContentTypes に拡張子を強制 → ユーザーが消しても安全
+        panel.allowsOtherFileTypes = false
+
+        let response = await withCheckedContinuation { (cont: CheckedContinuation<NSApplication.ModalResponse, Never>) in
+            panel.begin { cont.resume(returning: $0) }
+        }
+        guard response == .OK, let url = panel.url else { return } // キャンセルは沈黙
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            viewModel.reportExportFailure("保存に失敗しました: \(error.localizedDescription)")
         }
     }
 
@@ -90,7 +112,8 @@ extension RecordingDetailView {
         let safeTitle = recording.title
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
-        return "\(safeTitle)_\(dateStr)"
-        // 拡張子は SwiftUI が contentType から自動で付与する
+        // NSSavePanel は allowedContentTypes から拡張子を自動付与するが、
+        // ユーザーがファイル名欄を編集する場合に備えて拡張子も足しておく。
+        return "\(safeTitle)_\(dateStr).\(format.fileExtension)"
     }
 }

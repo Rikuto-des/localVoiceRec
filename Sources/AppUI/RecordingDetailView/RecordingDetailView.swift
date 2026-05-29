@@ -46,10 +46,8 @@ struct RecordingDetailView: View {
     @State var hideEcho: Bool = true
 
     // ─── Export 関連 ───
-    @State var showFormatChooser: Bool = false
-    @State var exportDocument: MinutesExportDocument?
-    @State var exportFormat: ExportFormat = .markdown
-    @State var exportSuggestedName: String = "minutes"
+    // 旧 SwiftUI `.fileExporter` 経路は撤去 (sheet と同時提示できない問題で実質機能していなかった)。
+    // 現在は `NSSavePanel` をシート閉じ後に直接呼ぶ。`isPreparingExport` だけ進捗フラグとして残す。
     @State var isPreparingExport: Bool = false
 
     // ─── ログ表示シート ───
@@ -57,6 +55,11 @@ struct RecordingDetailView: View {
     /// `nil` の間はシート非表示。
     @State var previewMinutes: MeetingMinutes?
     @State var isPreparingPreview: Bool = false
+
+    /// シート内「保存…」が押されたときに format を保持する。
+    /// シートが `dismiss()` し終わった `onDismiss` でこの値を読み、`NSSavePanel` を起動する。
+    /// SwiftUI が同時に複数の sheet 系 modal を提示できない制約への対処。
+    @State var pendingSaveFormat: ExportFormat?
 
     @State var isWaveformExpanded: Bool = true
 
@@ -151,45 +154,6 @@ struct ActionItemRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Export Document
-
-/// `.fileExporter` 用のドキュメント。テキストと選択フォーマットを保持する。
-///
-/// macOS 26 の `FileDocument` は値型でなければならないため、`struct` で実装する。
-struct MinutesExportDocument: FileDocument {
-    static var readableContentTypes: [UTType] {
-        // 読み込みは想定しないが、プロトコル要求のため両方宣言する
-        var types: [UTType] = [.plainText]
-        if let md = UTType("net.daringfireball.markdown") {
-            types.append(md)
-        }
-        return types
-    }
-
-    static var writableContentTypes: [UTType] { readableContentTypes }
-
-    let text: String
-    let format: ExportFormat
-
-    init(text: String, format: ExportFormat) {
-        self.text = text
-        self.format = format
-    }
-
-    init(configuration: ReadConfiguration) throws {
-        let data = configuration.file.regularFileContents ?? Data()
-        self.text = String(data: data, encoding: .utf8) ?? ""
-        self.format = .markdown
-    }
-
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = Data(text.utf8)
-        let wrapper = FileWrapper(regularFileWithContents: data)
-        wrapper.preferredFilename = nil // SwiftUI が defaultFilename + 拡張子を使う
-        return wrapper
     }
 }
 
